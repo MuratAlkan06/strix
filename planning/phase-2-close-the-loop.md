@@ -15,19 +15,82 @@
 - Form:
   - "How did this week feel?" — one-tap selector: `too_easy | right | too_hard`.
   - "Anything to tell your plan?" — optional free-text notes.
-  - "Replan which goals?" — multi-select of active goals (default: all).
-- On submit: writes one `weekly_check_ins` row (user-level per spec §5), then triggers replan generation for each selected goal — one `replan_proposals` row per goal, status `pending`.
+  - "Replan which goals?" — multi-select of active goals. **For Free users, the selectable count is capped at `remaining replan quota`** (computed from current month's `usage_counters.replans_used`); goals beyond the quota are shown in the list but the checkbox is disabled with inline tooltip: "You've used X of 2 replans this month. Upgrade for unlimited." Tapping a disabled goal opens the upgrade modal (same modal as cap-hit elsewhere). **No silent skip; no partial fail.** Pro/Max users see all goals selectable. Default selection: all goals up to the cap (Free) / all goals (Pro/Max).
+- On submit: writes one `weekly_check_ins` row (user-level per spec §5; unique `(user_id, week_start_date)` — re-submission upserts and triggers replans only for newly-selected goals), then triggers replan generation for each selected goal — one `replan_proposals` row per goal, status `pending`.
 - "Skip this week" button — writes a `weekly_check_ins` row with `feeling='right'` and no notes; **no replan triggered**. We still capture the cadence event for analytics.
 
 ### Replan flow
 
-- Endpoint: `POST /api/ai/replan` — accepts `goal_id`, `trigger` (`weekly_check_in | structural_edit`), and optional `weekly_check_in_id` or `structural_change` payload.
-- Model: `claude-sonnet-4-6`. System prompt:
+- Endpoint: `POST /api/ai/replan` — accepts `goal_id`, `trigger` (`weekly_check_in | structural_edit`), and optional `weekly_check_in_id` or `structural_change` payload. **The endpoint calls `checkAndIncrement(userId, 'replan')` in Phase 3**; in Phase 2 this is a stub that always returns `{ ok: true }` so the endpoint shape is stable.
+- Model: `claude-sonnet-4-6`. **Anthropic prompt caching on the long system prompt.** System prompt:
   - Reads goal + intake summary + current recurring_tasks/milestones/equipment + last 4 weeks of `task_completions` for adherence signal + the check-in feeling/notes or structural change.
-  - **Intensity rule (spec §5 flag #2):** uses `goals.intensity_override` when explicitly set, otherwise falls back to `users.intensity_preference`. State this clearly in the system prompt.
+  - **Intensity rule (spec §5 flag #2 + flag #6):** uses `goals.intensity_override` when explicitly set, otherwise falls back to `intake_summaries.confirmed_intensity`, otherwise to `users.intensity_preference`. State this clearly in the system prompt.
   - Output: a diff structure — `add`, `modify`, `remove` arrays for each of (recurring_tasks, milestones, equipment). Always proposes a diff, never an absolute replacement.
-- Diff stored in `replan_proposals.proposed_changes` (jsonb).
-- Anthropic prompt caching on the long system prompt.
+- Diff stored in `replan_proposals.proposed_changes` (jsonb), Zod-typed:
+
+```ts
+// lib/ai/replan-diff.ts
+import { z } from "zod"
+
+export const ReplanDiffSchema = z.object({
+  recurring_tasks: z.object({
+    add: z.array(z.object({
+      title: z.string(),
+      cadence: z.enum(["daily","weekly"]),
+      weekday: z.number().int().min(0).max(6).nullable(),
+      estimated_duration_min: z.number().int().positive(),
+    })),
+    modify: z.array(z.object({
+      id: z.string(),
+      changes: z.object({
+        title: z.string().optional(),
+        weekday: z.number().int().min(0).max(6).nullable().optional(),
+        estimated_duration_min: z.number().int().positive().optional(),
+        active: z.boolean().optional(),
+      }),
+    })),
+    remove: z.array(z.object({ id: z.string() })),
+  }),
+  milestones: z.object({
+    add: z.array(z.object({
+      title: z.string(),
+      target_date: z.string(),
+      position: z.number().int(),
+    })),
+    modify: z.array(z.object({
+      id: z.string(),
+      changes: z.object({
+        title: z.string().optional(),
+        target_date: z.string().optional(),
+        position: z.number().int().optional(),
+      }),
+    })),
+    remove: z.array(z.object({ id: z.string() })),
+  }),
+  equipment: z.object({
+    add: z.array(z.object({
+      title: z.string(),
+      cost_usd: z.number().nullable(),
+      milestone_id: z.string().nullable(),
+      standalone_deadline: z.string().nullable(),
+    })),
+    modify: z.array(z.object({
+      id: z.string(),
+      changes: z.object({
+        title: z.string().optional(),
+        cost_usd: z.number().nullable().optional(),
+        milestone_id: z.string().nullable().optional(),
+        standalone_deadline: z.string().nullable().optional(),
+      }),
+    })),
+    remove: z.array(z.object({ id: z.string() })),
+  }),
+})
+
+export type ReplanDiff = z.infer<typeof ReplanDiffSchema>
+```
+
+The AI's response is parsed and validated against this schema before persisting. Failed validation returns a 502 with the raw response logged.
 
 ### Replan diff UI
 
@@ -36,19 +99,20 @@
 - Three actions per change: ✓ Accept, ✎ Edit, ✕ Reject. Bulk "Accept all" available.
 - On commit: writes the accepted subset to the live tables, sets `replan_proposals.status` (`accepted | partially_accepted | rejected`) and `decided_at`.
 - **The AI proposes; the user approves.** Never apply silently. (Spec §8.)
-- PostHog: `first_weekly_check_in_completed`, `first_replan_accepted`, `replan_rejected`, `replan_partially_accepted`.
+- PostHog: `first_weekly_check_in_completed { feeling, goals_selected_count }`, `first_replan_accepted { goal_id, accept_count, reject_count }`, `replan_rejected { goal_id }`, `replan_partially_accepted { goal_id, accept_count, reject_count }`.
 
-### Structural-edit replan offer
+### Structural-edit replan banner — wired on
 
-- In Phase 1, the goal detail page already shows a "want me to update the rest of your plan?" banner on structural edits. Phase 2 wires it up: clicking the banner opens the replan endpoint with `trigger='structural_edit'` and the structural change payload, then routes to the diff UI.
-- Examples of "structural" edits that trigger the offer: adding a milestone, removing a recurring task, shifting the target date. Adding equipment or renaming a task does **not** trigger.
+- Phase 1 ships the banner behind `NEXT_PUBLIC_REPLAN_ENABLED`. Phase 2 flips the flag to `true` in env and wires the click action: opens the replan endpoint with `trigger='structural_edit'` and the structural change payload, then routes to the diff UI.
+- Examples of "structural" edits that trigger the banner: adding a milestone, removing a recurring task, shifting the target date. Adding equipment or renaming a task does **not** trigger.
 
 ### Goal completion celebration + auto-archive
 
 - "Mark complete" button in goal detail header.
-- On click: brief celebration moment (a confetti-free, restrained animation — perhaps a quiet check-mark fade + a "Well done." line — register: serious documentary, not Red Bull). Sets `goals.status='completed'`, `completed_at=now`, `auto_archive_at=now + 7 days`.
-- Inngest function `archiveCompletedGoals` runs daily, finds goals with `status='completed' AND auto_archive_at <= now`, sets `status='archived'`, `archived_at=now`. (Idempotent.)
-- Inngest function `resetMonthlyUsageCounters` registered now (used by Phase 3) but a no-op until tier caps exist.
+- On click: brief celebration moment (a confetti-free, restrained animation — perhaps a quiet check-mark fade + a "Well done." line — register: serious documentary, not Red Bull). Sets `goals.status='completed'`, `completed_at=now`, `auto_archive_at=now + 7 days`, `archive_reason='user_action'`.
+- Inngest function `archiveCompletedGoals`: `{ id: "archive-completed-goals", cron: "0 3 * * *" }`. Finds goals with `status='completed' AND auto_archive_at <= now` (excluding goals whose owner has `users.deleted_at IS NOT NULL`), sets `status='archived'`, `archived_at=now`. (Idempotent.)
+- Inngest function `resetMonthlyUsageCounters`: `{ id: "reset-monthly-usage-counters", cron: "0 * * * *" }` (hourly UTC). Registered in Phase 2 with a no-op body that returns immediately if no users are in a local-midnight-just-crossed window; Phase 3 fills out the body. Hourly cadence catches every timezone's local-month boundary.
+- Inngest function `sweepExpiredGoalDrafts`: `{ id: "sweep-expired-goal-drafts", cron: "0 4 * * *" }`. Deletes `goal_drafts` where `expires_at < now()`.
 
 ### Accomplished section on dashboard
 
@@ -61,10 +125,10 @@
 ### Replan prompt structure (sketch)
 
 ```
-SYSTEM:
+SYSTEM (cached):
   <voice rules>
-  <diff format: { add, modify, remove } per { recurring_tasks, milestones, equipment }>
-  <intensity rule: use goal-level if set, else user-level>
+  <diff format: matches ReplanDiffSchema; { add, modify, remove } per type>
+  <intensity rule: use goal-level if set, else intake confirmed_intensity, else user-level>
   <calibration rule: respond to adherence + check-in feeling>
 
 USER:
@@ -73,12 +137,12 @@ USER:
   <current_recurring_tasks, milestones, equipment>
   <last_4_weeks_task_completions: aggregated as expected_vs_actual per task>
   <trigger_payload: either { feeling, notes } or { structural_change }>
-  <intensity = goal.intensity_override ?? user.intensity_preference>
+  <intensity = goals.intensity_override ?? intake_summaries.confirmed_intensity ?? users.intensity_preference>
 ```
 
 ### Why one check-in produces N replan proposals
 
-Spec §5 says weekly check-ins are user-level (one per week). Spec §7C says replan operates on a single goal. The user picks which goals to replan from the check-in; each selected goal gets its own `replan_proposals` row. This means a single check-in can produce 1–5 proposals.
+Spec §5 says weekly check-ins are user-level (one per week). Spec §7C says replan operates on a single goal. The user picks which goals to replan from the check-in; each selected goal gets its own `replan_proposals` row. This means a single check-in can produce 1–5 proposals (capped at remaining Free-tier quota when applicable).
 
 ### Auto-archive Inngest job
 
@@ -89,9 +153,20 @@ inngest.createFunction(
   async ({ step }) => {
     await step.run("archive-due", async () => {
       // unscopedDb because this is a system job
-      await unscopedDb.update(goals)
+      await unscopedDb
+        .update(goals)
         .set({ status: "archived", archived_at: new Date() })
-        .where(and(eq(goals.status, "completed"), lte(goals.auto_archive_at, new Date())))
+        .where(and(
+          eq(goals.status, "completed"),
+          lte(goals.auto_archive_at, new Date()),
+          notExists(
+            unscopedDb.select().from(users)
+              .where(and(
+                eq(users.id, goals.user_id),
+                isNotNull(users.deleted_at)
+              ))
+          )
+        ))
     })
   }
 )
@@ -109,16 +184,22 @@ End-to-end:
 
 1. From Phase 1 state (a goal with at least 7 days of `task_completions`), trigger a weekly check-in (use a test seam to fast-forward `now`).
 2. Select "too hard" + add a note ("can't fit the long run on Saturdays"). Select 1 goal to replan. Submit.
-3. Replan endpoint runs Sonnet 4.6 → diff renders in the UI. Verify the diff shape matches the schema and the intensity comparison ran (log shows which value won — goal-level vs user-level).
+3. Replan endpoint runs Sonnet 4.6 → diff renders in the UI. Verify the diff shape parses cleanly against `ReplanDiffSchema` and the intensity comparison ran (log shows which value won — goal-level vs intake-confirmed vs user-level).
 4. Accept some changes, reject one. Save. Verify `replan_proposals.status='partially_accepted'`, live tables reflect accepted changes only.
-5. In goal detail, shift the target date 30 days later. Banner appears: "Want me to update the rest of your plan?" → click → replan diff UI opens with `trigger='structural_edit'`.
-6. Mark a goal complete → celebration shown, `status='completed'`, `auto_archive_at` is 7 days from now.
+5. In goal detail, with the replan flag enabled, shift the target date 30 days later. Banner appears: "Want me to update the rest of your plan?" → click → replan diff UI opens with `trigger='structural_edit'`.
+6. Mark a goal complete → celebration shown, `status='completed'`, `auto_archive_at` is 7 days from now, `archive_reason='user_action'`.
 7. Run the Inngest auto-archive function manually with `now=auto_archive_at+1s` → goal flips to `archived`. Idempotent: re-running does nothing.
 8. Accomplished section appears on dashboard with the completed goal.
+9. As a simulated Free user with `replans_used = 1` of 2: open weekly check-in with 3 active goals. Two goals are enabled, one is disabled with the inline tooltip. Tap the disabled goal → upgrade modal opens.
+10. Submit the check-in with the 2 enabled goals selected → 2 `replan_proposals` rows created; `usage_counters.replans_used` does not increment in Phase 2 (Phase 3 adds the increment).
 
 Automated (Vitest):
 
-- Replan prompt input correctly substitutes `goal.intensity_override` when set, falls back to `user.intensity_preference` when null. Both branches tested.
-- Auto-archive function archives only completed goals past `auto_archive_at`; leaves paused, active, untouched.
+- Replan prompt input correctly substitutes `goals.intensity_override` when set, falls back to `intake_summaries.confirmed_intensity` when override is null, falls back to `users.intensity_preference` when both are null. All three branches tested.
+- `ReplanDiffSchema.safeParse` rejects malformed AI output; passes valid output.
+- Auto-archive function archives only completed goals past `auto_archive_at`; leaves active, untouched.
+- Auto-archive excludes goals whose owner has `users.deleted_at` set.
 - Diff acceptance: given a fixture diff and a partial accept-set, the resulting live-table state matches expected.
 - Weekly check-in "skip" does not create replan_proposals rows.
+- Weekly check-in re-submission for the same `(user_id, week_start_date)` upserts and only triggers replans for newly-selected goals.
+- `sweepExpiredGoalDrafts` deletes only rows where `expires_at < now()`.
