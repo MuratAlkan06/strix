@@ -53,9 +53,12 @@
 ### Lighthouse / install audit
 
 - Run Lighthouse PWA audit. Target: PWA score ≥ 90, no failing audits.
-- Real-device manual install on:
-  - iPhone (iOS Safari latest) — install, open from home screen, navigate, kill app, reopen. No browser chrome should appear.
-  - Android (Chrome latest) — install via prompt, open from app drawer, navigate, kill app, reopen.
+- **Device matrix** for real-device manual install (sign-off owner: project lead, recorded in the launch checklist):
+  - **iPhone 15 Pro** (iOS 17+) — install via Safari, open from home screen, navigate, kill app, reopen. No browser chrome appears.
+  - **iPhone SE 3rd gen** (iOS 17+) — same checks; safe-area edge cases differ from notch devices.
+  - **Pixel 8** (Android 14+, Chrome stable) — install via prompt, open from app drawer, navigate, kill app, reopen.
+  - **Samsung Galaxy S22** (Android 14+, Chrome stable) — same checks; touch-target sizing differs.
+  - One older device of each OS family if available (iPhone XS / Pixel 5) — soft-target, not a gate.
 
 ## Phase-specific context
 
@@ -75,15 +78,25 @@ Pick the one that's currently maintained against Next.js 15 App Router. As of ea
 
 ## Verification
 
-End-to-end (real devices, not simulator):
+**Formal gate to Phase 3 — all five must pass; no exceptions:**
 
-1. Install on iPhone via Safari → "Add to Home Screen" → app opens in standalone mode, no browser chrome, status bar styled, safe area respected at top and bottom.
-2. From the installed app, navigate dashboard → goal detail → back. No browser back button visible; no URL bar.
-3. Force-quit the app, reopen → resumes at the dashboard (not on the sign-in page) for an authenticated session.
-4. Toggle airplane mode → dashboard renders from cache with "Offline" indicator; check-off button disabled with tooltip; no crash.
-5. Repeat 1–4 on Android Chrome.
-6. Lighthouse PWA audit on the deployed preview ≥ 90.
-7. The §9 #6 acceptance check: hand the installed app to someone who hasn't seen the project. Ask them if it's a website or an app. If they hesitate, you haven't passed.
+1. **Zero browser-chrome elements** visible after install on iPhone 15 Pro + Pixel 8. No URL bar, no Safari/Chrome top bar, no back-button chrome. Verified by screenshot in standalone mode.
+2. **Cold launch < 2.0s** from home-screen tap to dashboard first paint on the iPhone 15 Pro reference device (median of 5 trials, app force-quit between trials).
+3. **No URL-bar reveal during scroll** on either reference device. Scroll the dashboard top-to-bottom and bottom-to-top; the URL bar must not appear at any point.
+4. **Lighthouse PWA score ≥ 90** on the deployed preview, with zero failing audits.
+5. **Manifest validates** against the W3C manifest spec (`web-app-manifest` validator).
+
+**End-to-end (real devices, not simulator):**
+
+6. Install on iPhone via Safari → "Add to Home Screen" → app opens in standalone mode, no browser chrome, status bar styled, safe area respected at top and bottom.
+7. From the installed app, navigate dashboard → goal detail → back. No browser back button visible; no URL bar.
+8. Force-quit the app, reopen → resumes at the dashboard (not on the sign-in page) for an authenticated session.
+9. Toggle airplane mode → dashboard renders from cache with "Offline" indicator; check-off button disabled with tooltip; no crash.
+10. Repeat 6–9 on Pixel 8 / Galaxy S22 Chrome.
+
+**Soft signal (not a formal gate):**
+
+11. The §9 #6 acceptance check: hand the installed app to someone who hasn't seen the project. Ask them if it's a website or an app. If they hesitate, the brand register has leaked — investigate, but do not block the phase boundary on a single subjective response.
 
 Automated:
 

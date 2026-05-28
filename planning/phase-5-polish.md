@@ -10,28 +10,33 @@
 
 ### Full PostHog event taxonomy
 
-Spec §9 instrumentation list — every event below must fire from a centralized `lib/analytics/events.ts` so the taxonomy is enforced (typed event names, typed properties, single point of truth).
+Spec §9 instrumentation list — every event below must fire from a centralized `lib/analytics/events.ts` so the taxonomy is enforced (typed event names, typed properties, single point of truth). Earlier phases wire the fire sites; Phase 5 enforces the canonical names/properties and adds the ESLint rule.
 
-| Event | Properties | Fires when |
-|---|---|---|
-| `signup` | `{ method }` | First successful Clerk auth → users row insert |
-| `first_goal_created` | `{ goal_id, color_index, activity_type }` | First time `count(goals) = 1` after save |
-| `intake_started` | `{ goal_id?, seed?: string }` | User opens intake chat |
-| `intake_completed` | `{ goal_id, turn_count, structured_fields_count }` | Intake produces final structured summary |
-| `intake_turn_count` | `{ goal_id, turn_count }` | Per-completed-intake (same as above but useful flat) |
-| `intake_drop_off_turn` | `{ goal_id?, last_turn }` | User navigates away from in-progress intake |
-| `plan_generated` | `{ goal_id }` | Sonnet 4.6 plan-generation call succeeds |
-| `plan_accepted` | `{ goal_id, edits_count }` | Draft saved to live tables |
-| `first_task_checked` | `{ task_id, goal_id }` | First `task_completions` row for the user |
-| `first_weekly_check_in_completed` | `{ feeling, goals_selected_count }` | First `weekly_check_ins` row |
-| `first_replan_accepted` | `{ goal_id, accept_count, reject_count }` | First `replan_proposals.status='accepted'` |
-| `trial_started` | `{ tier: "max" }` | Stripe checkout completed for trial |
-| `trial_converted` | `{ tier, billing_period }` | Stripe webhook flips trial → active |
-| `subscription_started` | `{ tier, billing_period }` | Non-trial subscription created |
-| `subscription_canceled` | `{ tier, reason: "user_cancel" | "trial_expired" }` | User completes downgrade-and-archive flow |
-| `account_deleted` | `{ had_subscription }` | Soft-delete initiated |
-| `account_recovered` | `{ days_since_delete }` | User logs in within recovery window |
-| `free_tier_cap_hit` | `{ cap: "plan_generations" | "replans" | "active_goals", goal_id? }` | Cap response returned from API |
+| Event | Properties | Fires from | Fires when |
+|---|---|---|---|
+| `signup` | `{ method }` | Phase 0 | First successful Clerk auth → users row insert |
+| `first_goal_created` | `{ goal_id, color_index, activity_type }` | Phase 1 | `count(goals) = 1` after Save goal |
+| `intake_started` | `{ goal_draft_id, seed?: string }` | Phase 1 | User sends first intake message |
+| `intake_completed` | `{ goal_draft_id, turn_count, structured_fields_count }` | Phase 1 | Intake produces final structured summary |
+| `intake_turn_count` | `{ goal_draft_id, turn_count }` | Phase 1 | Per-completed-intake (flat view of the same fact) |
+| `intake_drop_off_turn` | `{ goal_draft_id?, last_turn }` | Phase 1 | User navigates away from in-progress intake |
+| `plan_generated` | `{ goal_draft_id }` | Phase 1 | Sonnet 4.6 plan-generation call succeeds |
+| `plan_accepted` | `{ goal_id, edits_count }` | Phase 1 | Draft saved to live tables |
+| `first_task_checked` | `{ task_id, goal_id }` | Phase 1 | First `task_completions` row for the user |
+| `first_weekly_check_in_completed` | `{ feeling, goals_selected_count }` | Phase 2 | First `weekly_check_ins` row |
+| `first_replan_accepted` | `{ goal_id, accept_count, reject_count }` | Phase 2 | First `replan_proposals.status='accepted'` |
+| `replan_rejected` | `{ goal_id }` | Phase 2 | `replan_proposals.status='rejected'` |
+| `replan_partially_accepted` | `{ goal_id, accept_count, reject_count }` | Phase 2 | `replan_proposals.status='partially_accepted'` |
+| `trial_started` | `{ tier: "max" }` | Phase 3 | Stripe checkout completed for trial |
+| `trial_converted` | `{ tier: "max", billing_period: "monthly" \| "annual" }` | Phase 3 | Stripe webhook flips trial → active |
+| `subscription_started` | `{ tier: "pro" \| "max", billing_period: "monthly" \| "annual" }` | Phase 3 | Non-trial subscription created (Pro signup) |
+| `subscription_canceled` | `{ tier, reason: "user_cancel" \| "payment_failed", billing_period }` | Phase 3 | User completes downgrade flow (`user_cancel`) or dunning exhausts after trial-end charge failure (`payment_failed`). **Silent trial expiry without payment failure is a `trial_converted`, never a `subscription_canceled`.** |
+| `subscription_resumed` | `{ tier, billing_period }` | Phase 3 | User clicks "Resume Max" before trial-end |
+| `free_tier_cap_hit` | `{ cap: "plan_generations" \| "replans" \| "active_goals", goal_id? }` | Phase 3 | Cap response returned from API |
+| `account_deleted` | `{ had_subscription }` | Phase 4 | Soft-delete initiated |
+| `account_recovered` | `{ days_since_delete }` | Phase 4 | User logs in within recovery window |
+| `data_exported` | `{ bytes }` | Phase 4 | `/api/me/export` returns 200 |
+| `email_sent` | `{ template, user_id }` | Phase 4 | Any Resend send via `lib/email/send.ts` |
 
 - Centralized `track(eventName, props)` function with strict types — discourages ad-hoc events drifting from the taxonomy.
 - Server-side events use `posthog-node` with explicit `distinctId = userId`. Client-side events use `posthog-js`.
@@ -114,7 +119,7 @@ Ship the 4–6 turn / hard-cap-10 default. PostHog feature flags exist (configur
 
 End-to-end:
 
-1. PostHog dashboard shows all 17 events from the taxonomy firing during a fresh user walkthrough.
+1. PostHog dashboard shows all 23 events from the taxonomy firing during a fresh user walkthrough (some events like `replan_rejected`, `subscription_resumed`, `email_sent` exercised via targeted scenarios).
 2. Lighthouse PWA score still ≥ 90 after polish.
 3. axe-core reports zero violations on dashboard, goal detail, intake, replan diff, settings, billing.
 4. Playwright golden-path E2E passes on a clean Neon preview.

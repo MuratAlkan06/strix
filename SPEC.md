@@ -49,7 +49,7 @@ Concrete implications the planning agent and any future design work should honor
 This describes the entities that exist in the product. Schema design (types, indexes, normalization, soft-delete patterns) is left to the planning agent.
 
 - A **user** has many **goals**. Max active goals is tier-dependent (3 Free, 5 Pro/Max).
-- A **goal** has a **status** (active, paused, completed, archived). Only active goals count against the tier cap.
+- A **goal** has a **status** (active, completed, archived). Only active goals count against the tier cap.
 - A goal has many **recurring tasks** (each with a cadence: daily or weekly), many **milestones** (dated waypoints), and many **equipment items**.
 - An **equipment item** may be linked to a specific milestone. When it is, its deadline is derived from that milestone. When it isn't, the AI sets a standalone deadline.
 - **Task completions** are tracked over time so the system knows what was done and when. This drives progress, replanning, and (later) streaks.
@@ -104,7 +104,7 @@ These are intentional, not defaults. The planning agent shouldn't quietly drop t
 - **Equipment is milestone-linked.** Gear isn't a flat shopping list; it has a deadline derived from when it's needed.
 - **Unified view is the default.** New users land on the cross-goal dashboard, not on a single goal. The product's distinct value is in seeing everything at once.
 - **Visual attribution is consistent.** Each goal has one color, assigned at creation, used everywhere it appears (dots, progress bars, milestone icons). Up to 5 active goals → 5 distinct colors from a fixed palette.
-- **Intensity is user-set, not inferred.** A preference ("comfortable / challenging / brutal") that the AI honors when generating and replanning. Don't auto-tune intensity from behavior in MVP.
+- **Intensity is user-set.** A preference ("comfortable / challenging / brutal") that the AI honors when generating and replanning. During intake, the AI may suggest a starting intensity based on the goal and timeline, but the user must explicitly confirm or change it — never inferred silently, never auto-applied. Don't auto-tune intensity from behavior in MVP.
 - **Active-goal cap is tier-based, not user preference.** 3 on Free, 5 on Pro/Max. Hard limit; the user can't have 6 active goals.
 - **No experience-level segmentation in the UI.** The AI handles calibration via intake. There is no beginner/expert split in the product surface.
 - **The AI flags unsafe and unrealistic goals.** Soft pushback during intake with reasoning and an alternative. User can override. The AI never refuses outright.
