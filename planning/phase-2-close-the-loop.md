@@ -17,7 +17,7 @@
   - "Anything to tell your plan?" — optional free-text notes.
   - "Replan which goals?" — multi-select of active goals. **For Free users, the selectable count is capped at `remaining replan quota`** (computed from current month's `usage_counters.replans_used`); goals beyond the quota are shown in the list but the checkbox is disabled with inline tooltip: "You've used X of 2 replans this month. Upgrade for unlimited." Tapping a disabled goal opens the upgrade modal (same modal as cap-hit elsewhere). **No silent skip; no partial fail.** Pro/Max users see all goals selectable. Default selection: all goals up to the cap (Free) / all goals (Pro/Max).
 - On submit: writes one `weekly_check_ins` row (user-level per spec §5; unique `(user_id, week_start_date)` — re-submission upserts and triggers replans only for newly-selected goals), then triggers replan generation for each selected goal — one `replan_proposals` row per goal, status `pending`.
-- "Skip this week" button — writes a `weekly_check_ins` row with `feeling='right'` and no notes; **no replan triggered**. We still capture the cadence event for analytics.
+- "Skip this week" button — writes a `weekly_check_ins` row with **`feeling='skipped'`** (enum value added in Phase 0) and NULL notes; **no replan triggered**. Skips are not sentiment data: they must be distinguishable from `'right'` in every downstream query, and replan prompts exclude skipped weeks from the feeling signal. The row exists (rather than a PostHog-only event) so the Friday prompt knows the week is handled and so a later real submission upserts over it cleanly. A real re-submission in the same week replaces the skip and triggers replans normally.
 
 ### Replan flow
 
@@ -99,7 +99,7 @@ The AI's response is parsed and validated against this schema before persisting.
 - Three actions per change: ✓ Accept, ✎ Edit, ✕ Reject. Bulk "Accept all" available.
 - On commit: writes the accepted subset to the live tables, sets `replan_proposals.status` (`accepted | partially_accepted | rejected`) and `decided_at`.
 - **The AI proposes; the user approves.** Never apply silently. (Spec §8.)
-- PostHog: `first_weekly_check_in_completed { feeling, goals_selected_count }`, `first_replan_accepted { goal_id, accept_count, reject_count }`, `replan_rejected { goal_id }`, `replan_partially_accepted { goal_id, accept_count, reject_count }`.
+- PostHog: `first_weekly_check_in_completed { feeling, goals_selected_count }` — fires on the user's first **non-skipped** check-in row (a skip is not funnel completion), `first_replan_accepted { goal_id, accept_count, reject_count }`, `replan_rejected { goal_id }`, `replan_partially_accepted { goal_id, accept_count, reject_count }`.
 
 ### Structural-edit replan banner — wired on
 
@@ -195,11 +195,13 @@ End-to-end:
 
 Automated (Vitest):
 
-- Replan prompt input correctly substitutes `goals.intensity_override` when set, falls back to `intake_summaries.confirmed_intensity` when override is null, falls back to `users.intensity_preference` when both are null. All three branches tested.
+- Replan prompt input correctly substitutes `goals.intensity_override` when set, falls back to `intake_summaries.confirmed_intensity` when override is null, falls back to `users.intensity_preference` when the override is null **and no intake summary row exists** (`confirmed_intensity` is NOT NULL, so the third branch is only reachable via an absent summary — the fixture must construct it that way). All three branches tested.
 - `ReplanDiffSchema.safeParse` rejects malformed AI output; passes valid output.
 - Auto-archive function archives only completed goals past `auto_archive_at`; leaves active, untouched.
 - Auto-archive excludes goals whose owner has `users.deleted_at` set.
 - Diff acceptance: given a fixture diff and a partial accept-set, the resulting live-table state matches expected.
-- Weekly check-in "skip" does not create replan_proposals rows.
+- Weekly check-in "skip" writes `feeling='skipped'` with NULL notes and does not create replan_proposals rows.
+- A real submission after a skip in the same week upserts over the `'skipped'` row and triggers replans for all selected goals.
+- Replan prompt construction excludes `'skipped'` rows from any feeling signal.
 - Weekly check-in re-submission for the same `(user_id, week_start_date)` upserts and only triggers replans for newly-selected goals.
 - `sweepExpiredGoalDrafts` deletes only rows where `expires_at < now()`.

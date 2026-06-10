@@ -11,7 +11,7 @@
 ### Settings page
 
 - Route: `app/(settings)/page.tsx` (replacing the Phase 0 placeholder shell). Spec §6:
-  - **Profile** — display name, timezone (auto-detected with override), intensity preference (synced from the user's most recent intake confirmation; editable here).
+  - **Profile** — display name, timezone (auto-detected with override), intensity preference (synced from the user's most recent intake confirmation; editable here). All profile writes go through `scopedDb.updateSelf()` — the Phase 0 self-accessor that permits exactly these three columns.
   - **Subscription** — links to billing settings from Phase 3.
   - **Data** — "Export your data" button, "Delete account" link.
   - Both Data items visible but not the very first thing — under Profile + Subscription per spec §10 "visible but not the very first thing."
@@ -20,7 +20,7 @@
 
 - Spec §10: "One-click JSON export of all the user's data: goals, recurring tasks, completions, milestones, equipment, check-ins, intake summaries. Required for GDPR, expected by power users, and useful for the company's own debugging. Available on all tiers — no premium gating."
 - Endpoint: `GET /api/me/export`. **`userId` is sourced exclusively from `auth.userId` (Clerk session)** — never from query string, body, or header. The handler explicitly reads from the auth context and uses `scopedDb(authUserId)` for every read.
-- **Rate-limited**: 5 requests per user per hour, returning 429 with `Retry-After` header beyond that. Implemented via an in-memory ring buffer keyed by `userId` (single-instance OK for MVP scale; revisit if multi-region).
+- **Rate-limited**: 5 requests per user per hour, returning 429 with `Retry-After` header beyond that. Implemented via an in-memory ring buffer keyed by `userId`. **Advisory only on Vercel**: serverless instances don't share memory (concurrent invocations may each get their own), instances are recycled within minutes when idle, and every deploy wipes module state — real-world behavior is closer to "5 per instance-lifetime" than a hard 5/hour. Acceptable for MVP (the export is cheap and auth-gated); if export abuse appears, escalate to a DB-backed limiter (a last-export-timestamps check in Neon — the stack already does Postgres-backed counters; no new KV infrastructure needed).
 - Returns a single JSON blob with all user-owned rows, structured as:
 
   ```json
@@ -44,10 +44,12 @@
       }
     ],
     "weekly_check_ins": [ ... ],
-    "usage_counters": [ ... ]
+    "usage_counters": [ ... ],
+    "goal_drafts": [ { "...in-progress intake drafts: seed, raw_transcript, intake_summary_draft, plan_draft, expires_at — session_token REDACTED..." } ]
   }
   ```
 - **`raw_transcript` is explicitly included** — GDPR data-portability requires the full record of stored user-generated content.
+- **`goal_drafts` are included** (in-progress intake transcripts are stored user content; the hard-delete cron already purges them as personal data, so portability must cover them too) — **except `session_token`, which is redacted**: it's a live credential mapped to an HttpOnly cookie, and exporting it into a shareable JSON file would defeat the HttpOnly protection.
 - Triggered by a button in settings → downloads `strix-export-{userId}-{date}.json`.
 - No file uploads to S3 or email-as-attachment — direct response. Keeps it simple; revisit if exports get large.
 - PostHog: `data_exported { bytes }`.
@@ -57,15 +59,23 @@
 - Spec §10: distinct from subscription cancellation. Soft-delete for 30-day grace period; hard-delete after 30 days.
 - "Delete account" link in settings → confirmation screen:
   - Plain copy: "Deleting your account removes your goals, plans, and check-ins. You can recover by signing in within the next 30 days. After 30 days, all data is permanently deleted."
-  - If user has an active subscription: "Your subscription will be canceled at the end of the current billing period. Refund policy applies as usual."
-  - Single primary button: "Delete account."
-- On click:
+  - Subscription line **varies by billing state** (the old blanket "canceled at the end of the current billing period; refund policy applies as usual" was impossible to honor for annual subscribers — the day-30 hard delete's `stripe.customers.del` force-cancels everything, silently forfeiting up to ~11 months of paid time):
+    - **Annual, `status='active'`, within 30 days of `current_period_start`, no prior refund on the charge**: "Your annual subscription qualifies for a prorated refund of {amount}, which will be issued now." (Honors the in-app refund policy automatically — a deleting user shouldn't have to know to request the refund first.)
+    - **Annual, past the 30-day window**: "Your annual subscription will end. Time remaining on it is not refundable past 30 days from purchase, and access ends with account deletion." Plain forfeiture, no end-of-period pretense.
+    - **Monthly**: "Your subscription will be canceled at the end of the current billing period." (The period resolves within the grace window, give or take a day at the boundary — no refund per policy.)
+    - **Trialing** (any period): "Your trial will be canceled. You haven't been charged." Nothing to refund — a trial's `current_period_start` is the trial start, so the refund predicate must also require `status='active'` or it would try to refund a $0 trial invoice.
+- On click, in order (Stripe first, `deleted_at` last — so the deletion-flow's own webhook events arrive against a not-yet-soft-deleted row and sync normally):
+  - Subscription handling per the state above: annual-within-window → issue the prorated refund (reuse Phase 3's refund computation and `stripe.refunds.create` path; **exactly one refund** — re-check no prior refund exists) and cancel immediately, syncing the local row in the same action; annual-past-window and monthly → `stripe.subscriptions.update(subId, { cancel_at_period_end: true })`; trialing → cancel immediately (no charge ever happens).
   - Set `users.deleted_at = now()`.
-  - If user has active subscription: call `stripe.subscriptions.update(subId, { cancel_at_period_end: true })`.
-  - Sign the user out via Clerk.
+  - Sign the user out via Clerk (which also triggers the Phase 2.5 client-side cache purge).
   - Send transactional email via Resend: `account_deletion_initiated` — "We've started deleting your account. To recover, sign in within 30 days at strix.app. After 30 days, all data is permanently removed."
   - PostHog: `account_deleted { had_subscription }`.
-- Login recovery: if a user signs in with `users.deleted_at IS NOT NULL AND deleted_at + 30 days > now`, show a recovery screen: "Welcome back. Restore your account?" → primary action clears `deleted_at`, restoring access. PostHog: `account_recovered { days_since_delete }`. **The recovery screen uses `unscopedDb` to bypass the global soft-delete filter** (the filter exists in `scopedDb` from Phase 0).
+- Login recovery: if a user signs in with `users.deleted_at IS NOT NULL AND deleted_at + 30 days > now`, show a recovery screen: "Welcome back. Restore your account?" → primary action runs the **recovery reconciliation**, not just a flag flip:
+  1. Clear `deleted_at`.
+  2. **Re-sync billing from Stripe**: fetch the subscription's live state and update `subscriptions.status` / `users.tier` to match (during grace, side-effect-suppressed webhooks kept billing state synced, but reconcile defensively — a refunded-and-canceled annual deleter recovers at `tier='free'`; a monthly deleter whose period ended during grace likewise; a monthly deleter mid-period recovers with the subscription still live and `cancel_at_period_end=true` — **disclose it**: "Your subscription is set to end on {date}. Resume it from billing settings." Recovery does not silently un-cancel).
+  3. **Goal-cap reconciliation**: if the recovered tier leaves `active_goals > tier_cap` (e.g. an ex-Max user with 5 goals recovering at Free), present the standard downgrade-and-archive selection screen before the dashboard — the user is present, so the selection screen (not the heuristic) is the right tool.
+  - PostHog: `account_recovered { days_since_delete }`.
+- **All lifecycle data access — soft-delete write, soft-deleted-login detection, and recovery — lives in `lib/auth/lifecycle.ts`**, the one non-webhook module on the Phase 0 `unscopedDb` allowlist (it must see and mutate soft-deleted rows that `scopedDb` filters out, and `deleted_at` is forbidden to `updateSelf` by design). Route handlers, middleware, and the recovery screen call its functions; they never import `unscopedDb` themselves.
 
 ### Hard-delete cron + cleanup order (Stripe → Clerk → DB)
 
@@ -85,6 +95,7 @@
      8. Hard-delete `weekly_check_ins`, `usage_counters`, `subscriptions`, `goal_drafts` for this user.
      9. Hard-delete the `users` row.
 - Idempotent: re-running the job on a user already hard-deleted is a no-op (the user row is gone, query returns no matches).
+- **30-day boundary race**: recovery (`deleted_at + 30d > now`) and the cron (`deleted_at + 30d <= now`) can interleave at the boundary — a user restoring mid-purge could be left half-purged (children deleted, user/goals restored, never re-matched by the cron). Guards: the cron re-verifies `deleted_at` is still set inside the DB transaction (step 3) before deleting, and the recovery action refuses (shows the standard expired message) once the purge has begun for that user. For the annual-within-window cohort the refund was already issued at soft-delete, so `stripe.customers.del` at this point cancels nothing that still carries paid time.
 
 ### Resend transactional emails
 
@@ -129,7 +140,9 @@ Phase 4 verification adds a regression matrix:
 | Phase 2 replan endpoint | Non-deleted user triggers replan | Endpoint returns diff |
 | Phase 3 cap check | Non-deleted Free user near cap | `checkAndIncrement` works |
 | Phase 3 Stripe webhook | Customer event for non-deleted user | Subscription updated |
-| Phase 3 Stripe webhook | Customer event for soft-deleted user during grace | No update (filter rejects) — but webhook still 200-OKs idempotently |
+| Phase 3 Stripe webhook | Customer event for soft-deleted user during grace | **Billing state syncs** (`subscriptions.status`/`users.tier` updated — recovery depends on it), **side-effects suppressed** (no archive job, banner, email, or analytics event); webhook 200-OKs idempotently |
+| Phase 0 Clerk webhook | `user.updated` for soft-deleted user during grace | No profile sync (guard in the handler's WHERE clause); 200 |
+| Phase 4 recovery | Soft-deleted subscriber recovers on day 25 | `deleted_at` cleared, billing re-synced from Stripe, tier accurate, over-cap goals routed through the selection screen |
 
 Add Vitest fixtures with two users, one with `deleted_at` set, and assert each surface's expected behavior.
 
@@ -142,7 +155,7 @@ Add Vitest fixtures with two users, one with `deleted_at` set, and assert each s
 
 End-to-end:
 
-1. As authenticated user with at least one goal, navigate to Settings → Data → "Export your data" → JSON downloads containing all expected sections (user, subscription, goals with nested children including `raw_transcript`, check-ins, usage_counters). PostHog `data_exported` fires.
+1. As authenticated user with at least one goal and one in-progress draft, navigate to Settings → Data → "Export your data" → JSON downloads containing all expected sections (user, subscription, goals with nested children including `raw_transcript`, check-ins, usage_counters, goal_drafts with `session_token` redacted). PostHog `data_exported` fires.
 2. Validate the export JSON against a schema (Vitest).
 3. Hit `/api/me/export` 6 times in an hour → 6th returns 429 with `Retry-After`.
 4. POST to `/api/me/export?userId=<otherUser>` → still scoped to auth userId; returns the caller's data, not the queried user's.
@@ -160,8 +173,12 @@ Automated (Vitest):
 - `/api/me/export` reads userId from auth context, not from query/body.
 - `/api/me/export` rate limit triggers at 6th request within the hour.
 - `/api/me/export` JSON includes `raw_transcript` for every intake summary.
-- Soft-delete idempotency: marking a user `deleted_at` twice doesn't double-cancel the subscription.
+- `/api/me/export` JSON includes `goal_drafts` (in-progress drafts present) and **no `session_token` anywhere in the payload**.
+- Soft-delete idempotency: marking a user `deleted_at` twice doesn't double-cancel the subscription or double-refund.
+- **Deletion × billing state**: annual-within-window deletion issues exactly one prorated refund and cancels immediately; refund-then-delete (manual Phase 3 refund first) issues no second refund; annual-past-window deletion sets `cancel_at_period_end` and issues no refund; trialing deletion cancels with no refund attempt; monthly unchanged.
+- **Recovery reconciliation**: recovery after a refunded deletion restores at `tier='free'`; recovery re-syncs `subscriptions.status`/`users.tier` from Stripe; recovery with `active_goals > tier_cap` routes through the downgrade-and-archive selection before dashboard access; a live `cancel_at_period_end` subscription is disclosed, not silently resumed.
 - Login recovery within window works; outside window, the next morning's hard-delete cron removes them.
+- Hard-delete cron re-verifies `deleted_at` inside the transaction (boundary race with recovery).
 - `hardDeleteAccounts` is idempotent (no error if user already gone).
 - `hardDeleteAccounts` execution order: Stripe call precedes Clerk call precedes DB delete. Verified via mock call order.
 - `hardDeleteAccounts` on Clerk failure: skip user, retry tomorrow (no DB mutation in this run).
@@ -169,4 +186,4 @@ Automated (Vitest):
 - Stripe customer deletion is attempted; on failure (mock 500), the metadata-mark fallback runs and the user delete still proceeds.
 - Stripe webhook for a customer with `metadata.deleted='true'`: handler no-ops cleanly.
 - `account_hard_deleted` template does not exist in `lib/email/templates/`.
-- Phase 4 regression matrix (10 rows from above) all pass.
+- Phase 4 regression matrix (11 rows from above) all pass.

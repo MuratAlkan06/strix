@@ -35,7 +35,7 @@
   - Header: "Pick your intensity for this goal."
   - The AI's `suggested_intensity` is pre-selected with its one-sentence reasoning shown ("For a 3-year marathon timeline starting from couch level, comfortable is the realistic call.").
   - Three radio options: **Comfortable · Challenging · Brutal**, each with a one-line description anchored to the goal context.
-  - Primary action: "Continue with {selected}" — writes `intake_summaries.suggested_intensity` and `intake_summaries.confirmed_intensity` (the latter being the user's pick), updates `users.intensity_preference` with the user's pick (so subsequent goals' confirmation cards anchor to the most recent pick), then proceeds to plan generation.
+  - Primary action: "Continue with {selected}" — writes `intake_summaries.suggested_intensity` and `intake_summaries.confirmed_intensity` (the latter being the user's pick), updates `users.intensity_preference` with the user's pick via `scopedDb.updateSelf()`, then proceeds to plan generation. `users.intensity_preference`'s roles are: the **final fallback** in the intensity chain (`goals.intensity_override` → `intake_summaries.confirmed_intensity` → `users.intensity_preference`) and the default shown in Settings. It does **not** anchor future confirmation cards — every goal's card pre-selects the AI's `suggested_intensity` for that goal.
 - The user **must pick explicitly** — no auto-proceed, no default-on-skip. If they navigate away without picking, the draft persists and they resume here on return.
 - Spec §8 compliance: the AI suggests, the user actively chooses; never silent, never auto-applied.
 
@@ -80,7 +80,7 @@
 - Route: `app/(goals)/[id]/page.tsx`.
 - Sections: header (title, color, intensity control), daily habits, weekly sessions, milestones (timeline), equipment.
 - All sections editable: add/remove/reschedule items inline.
-- **Intensity control**: per spec §5 flag #2 + flag #6 resolution. Defaults to the user's confirmed intensity from intake (shown as the active selection). When the user changes it, sets `goals.intensity_override`.
+- **Intensity control**: per PLAN.md §5 flag #2 + flag #6 resolution. When `goals.intensity_override` is unset, the control shows the goal's effective intensity — its intake `confirmed_intensity` — as the active selection, with copy "Follows your intake intensity" (not "account preference": the chain prefers the intake pick). When the user changes it, sets `goals.intensity_override`; `intensity_override` is written **only** on explicit change here, never at goal creation.
 - "Adjust plan" button — placeholder in Phase 1 (Phase 2 wires the actual replan flow).
 - **Structural-edit replan banner is feature-flagged OFF in Phase 1.** The banner ("Want me to update the rest of your plan?") is gated behind `NEXT_PUBLIC_REPLAN_ENABLED=true`, which is `false` until Phase 2 ships the endpoint. With the flag off, structural edits save normally with no banner. Phase 2 flips the flag on. (Avoids a Phase-1-ship-window dead button per the review.)
 
@@ -91,7 +91,7 @@
   - **This week** — remaining weekly tasks for the current week + milestones/equipment due this week.
   - **Upcoming** — next 14 days of milestones and equipment.
 - Each row: colored dot (goal color) + title + secondary line (goal name). Tap to expand; tap goal name to deep-link to goal detail.
-- Task check-off: tap the checkbox → optimistic strikethrough → server action inserts `task_completions` row with `for_date = today`, `recurring_task_id`, `goal_id`, `user_id`. **The server action uses `scopedDb` whose `task_completions` insert validates that `recurring_task_id` belongs to the requesting user** (prevents forged-task-id DoS — Phase 0). Unique constraint prevents double-completion.
+- Task check-off: tap the checkbox → optimistic strikethrough → server action inserts a `task_completions` row with `for_date = today` and `recurring_task_id`. **The server action uses `scopedDb`, whose `task_completions` insert is a single atomic `INSERT … SELECT` that proves the recurring task belongs to the requesting (live) user and derives `goal_id` server-side from the task's parent** — a forged or mismatched id inserts zero rows and throws (prevents forged-task-id DoS and denormalized-goal_id corruption — Phase 0). Unique constraint prevents double-completion.
 - PostHog: **`first_task_checked { task_id, goal_id }`** when this is the user's first-ever `task_completions` row.
 
 ### Equipment aggregated view
@@ -117,7 +117,7 @@ On goal creation (Phase 1 cap is 5; no archived goals exist yet):
 Phase 2 onward (archived goals exist):
 
 ```
-  used = set of goals.color_index where status IN ('active','paused','completed','archived') for this user
+  used = set of goals.color_index where status IN ('active','completed','archived') for this user
   available = [0,1,2,3,4] minus used
   if available is empty: pick the lowest color_index whose goals are all archived (color recycling)
   else: pick min(available)
@@ -199,7 +199,7 @@ Automated (Vitest):
 - Equipment deadline derivation (milestone-linked vs standalone) with both branches.
 - Color assignment algorithm produces distinct colors for goals 1–5; algorithm in Phase 1 never reaches the "all archived" branch because cap=5.
 - `task_completions` unique constraint rejects double-completion.
-- `task_completions` server-action validates `recurring_task_id` ownership — forged id → throws.
+- `task_completions` server-action ownership: forged `recurring_task_id` → atomic insert lands zero rows → throws; stored `goal_id` always equals the task's parent goal (derived, not trusted).
 - `scopedDb` queries cannot return another user's goals (seeded fixture with two users).
 - Intake seed param: known values pass; arbitrary strings reject with 400.
 - Intake termination: given a fixture transcript with all required fields elicited (including `suggested_intensity`), the parser produces a valid intake_summary payload.

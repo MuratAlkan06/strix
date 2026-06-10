@@ -23,14 +23,14 @@ Spec §9 instrumentation list — every event below must fire from a centralized
 | `plan_generated` | `{ goal_draft_id }` | Phase 1 | Sonnet 4.6 plan-generation call succeeds |
 | `plan_accepted` | `{ goal_id, edits_count }` | Phase 1 | Draft saved to live tables |
 | `first_task_checked` | `{ task_id, goal_id }` | Phase 1 | First `task_completions` row for the user |
-| `first_weekly_check_in_completed` | `{ feeling, goals_selected_count }` | Phase 2 | First `weekly_check_ins` row |
+| `first_weekly_check_in_completed` | `{ feeling, goals_selected_count }` | Phase 2 | First **non-skipped** `weekly_check_ins` row (a `feeling='skipped'` row is not funnel completion) |
 | `first_replan_accepted` | `{ goal_id, accept_count, reject_count }` | Phase 2 | First `replan_proposals.status='accepted'` |
 | `replan_rejected` | `{ goal_id }` | Phase 2 | `replan_proposals.status='rejected'` |
 | `replan_partially_accepted` | `{ goal_id, accept_count, reject_count }` | Phase 2 | `replan_proposals.status='partially_accepted'` |
 | `trial_started` | `{ tier: "max" }` | Phase 3 | Stripe checkout completed for trial |
 | `trial_converted` | `{ tier: "max", billing_period: "monthly" \| "annual" }` | Phase 3 | Stripe webhook flips trial → active |
 | `subscription_started` | `{ tier: "pro" \| "max", billing_period: "monthly" \| "annual" }` | Phase 3 | Non-trial subscription created (Pro signup) |
-| `subscription_canceled` | `{ tier, reason: "user_cancel" \| "payment_failed", billing_period }` | Phase 3 | User completes downgrade flow (`user_cancel`) or dunning exhausts after trial-end charge failure (`payment_failed`). **Silent trial expiry without payment failure is a `trial_converted`, never a `subscription_canceled`.** |
+| `subscription_canceled` | `{ tier, reason: "user_cancel" \| "payment_failed", billing_period }` | Phase 3 | User completes downgrade flow (`user_cancel` — fires **exactly once, at the cancel-click decision moment**, never again at trial-end) or dunning exhausts after trial-end charge failure (`payment_failed`). **Silent trial expiry without payment failure is a `trial_converted`, never a `subscription_canceled`.** A user who cancels then resumes fires `subscription_resumed` — churn analysis nets the two; the click-time fire alone overcounts resumers. |
 | `subscription_resumed` | `{ tier, billing_period }` | Phase 3 | User clicks "Resume Max" before trial-end |
 | `free_tier_cap_hit` | `{ cap: "plan_generations" \| "replans" \| "active_goals", goal_id? }` | Phase 3 | Cap response returned from API |
 | `account_deleted` | `{ had_subscription }` | Phase 4 | Soft-delete initiated |
