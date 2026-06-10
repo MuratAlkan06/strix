@@ -1,6 +1,6 @@
 # DESIGN.md — Strix visual & interaction design
 
-> **STATUS: DRAFT** — chrome polarity (light vs. dark primary) and accent temperature (amber vs. coral) are **pending user curation** of rendered variants **V1 / V2 / V3**. Design tokens are minted **ONCE** after curation and frozen thereafter. Until then, every token below is a **CANDIDATE**, not a committed value. The contrast claims in this document are likewise DRAFT — the `verify:ui` harness (axe-core, both modes) is the source of truth, not the numbers written here.
+> **STATUS: FROZEN (2026-06-10)** — **V1 Dusk** (dark · amber) was minted as the canonical design after user curation of rendered variants **V1 / V2 / V3**. Tokens are **dark-primary by default** and live in [`../src/app/globals.css`](../src/app/globals.css) (§2 V1 table = those exact values). **No re-minting:** changing a token requires a new design decision recorded here **and** in [`DECISIONS.md`](DECISIONS.md), not an ad-hoc edit. V2 Pale Dawn is the recorded future light-mode recipe; V3 Slate-Coral is a recorded future temperament colorway (§2, §12). The contrast claims in this document remain non-authoritative — the `verify:ui` harness (axe-core, both modes) is the source of truth, not the numbers written here.
 
 This document is the design counterpart to [`../SPEC.md`](../SPEC.md) §4 and the visual-register entry in [`DECISIONS.md`](DECISIONS.md). SPEC §4 locks the brand *register*; this file specifies the *system* that renders it. Where the two ever disagree, SPEC's register intent wins and this file is corrected.
 
@@ -25,20 +25,22 @@ Two rules keep DAWN from being a generic dusk-gradient template:
 
 ---
 
-## 2. Design tokens — CANDIDATES (V1 / V2 / V3), minted post-curation
+## 2. Design tokens — V1 Dusk MINTED (V2 / V3 recorded for the future)
 
-These are presented for **side-by-side curation** on a throwaway `/playground/dashboard` route (dev-only). Three class wrappers (`.v1` / `.v2` / `.v3`) override the token block so all three render on one screen. Held constant across all three: the DAWN atmosphere system, the owl emblem, the layout skeleton, and the seed content. **Varied:** chrome polarity + accent temperature.
+**Outcome of curation (2026-06-10).** The three variants were rendered side-by-side on the dev-only `/playground/dashboard` route (three class wrappers `.v1` / `.v2` / `.v3` over the token block; DAWN atmosphere, owl emblem, layout skeleton, and seed content held constant; chrome polarity + accent temperature varied). The user picked **V1 — Dusk (dark · amber)** as canonical.
 
-Values are **OKLCH** "L C H" and map to **exact shadcn slot names** in `src/app/globals.css`. Global rules for all three:
+**Winner rationale (one line).** A sunrise needs a dark base to rise *from*; the product is used at the dark ends of the day (early-morning planning, evening check-ins); the owl/nocturnal brand logic wants a night ground; amber carries *first-light* semantics (the dawn the brand is named for); coral read too alert-/destructive-adjacent for a calm register (and would force an icon pairing on every destructive — §8). Dark-primary + amber it is.
+
+Values are **OKLCH** "L C H" and map to **exact shadcn slot names**. Global rules:
 - `--radius: 0.625rem` (constant).
 - `--input` mirrors `--border`; `--popover` / `--popover-foreground` mirror `--card` / `--card-foreground`.
 - The `@theme` bindings already in `globals.css` are **reused, not renamed**.
-- The final mint replaces the neutral scaffold currently in `globals.css` — **once**, after the user picks. No re-mint after freeze.
+- The V1 table below **is what `globals.css` `:root` carries** (dark-primary by default — no class needed). V2 / V3 are **recorded recipes**, not live tokens.
 
-**Curation logic.** V1↔V2 isolates **polarity** (dark vs. light primary). V1↔V3 isolates **accent temperature** (amber vs. coral) on the same dark polarity. A blend is allowed; the losing variant's palette becomes a candidate future coach-temperament colorway (see §12), not waste.
-
-### V1 — Dusk (dark-primary)
+### V1 — Dusk (dark-primary) — **MINTED CANONICAL**
 *Feel: the alpine hut at last light — deep indigo dusk, warm amber as the single point of heat. Premium, nocturnal, focused.*
+
+> This table matches `src/app/globals.css` `:root` **exactly** (and `.dark`, which is aligned to the same values so dark-class toggling is a no-op). Goal ramp = §5 dark column; scene props = §4.3 dusk-base.
 
 | slot | OKLCH | note |
 |---|---|---|
@@ -60,8 +62,12 @@ Values are **OKLCH** "L C H" and map to **exact shadcn slot names** in `src/app/
 
 **Horizon gradient (V1):** vertical top→bottom `oklch(0.20 0.045 270)` 0% → `oklch(0.30 0.07 300)` 48% → `oklch(0.55 0.12 50)` 100%, plus a sun-glow radial `oklch(0.82 0.12 75)` @18% alpha centered ~78%w / 88%h.
 
-### V2 — Pale Dawn (light-primary)
+### V2 — Pale Dawn (light-primary) — **RECORDED future light-mode recipe (not minted)**
 *Feel: 5am desk, cold clear morning — pale sky, ink-blue type, same amber sun as warm anchor. Calm, awake, premium-clean.*
+
+> **Reserved for the future light-mode slice.** When light mode is built, mint this under a light-mode mechanism (a `.light` / data-attr or `prefers-color-scheme`), not by re-minting `:root`. **Two contrast corrections from curation review must land at that mint** (the playground rendered the raw recipe; these were caught against white):
+> - **On-white warning amber must reach ≥4.5:1** (warning notes are body text — §8 "cap hit / overdue"). Darken the amber toward the primary-at-0.62 L pattern already used for `primary` below; the `0.78 L` dusk amber is text-legible only on the dark ground.
+> - **On-white goal-dot amber ≥3:1** (the §5 dot floor is 3:1 on its card). The light goal-0 (`0.70 0.12 65`) must be verified/darkened on white so the dot clears 3:1; pair it with its text as always (color is never sole signal).
 
 | slot | OKLCH | note |
 |---|---|---|
@@ -83,8 +89,10 @@ Values are **OKLCH** "L C H" and map to **exact shadcn slot names** in `src/app/
 
 **Horizon gradient (V2):** top→bottom `oklch(0.93 0.03 255)` 0% → `oklch(0.90 0.055 40)` 55% → `oklch(0.95 0.04 75)` 100%, sun-glow radial `oklch(0.95 0.06 80)` @35% at ~75% / 82%. Pale, never washed-out; verify ≥3:1 against overlaid emblem/text.
 
-### V3 — Slate / Coral (third axis = accent temperature, dark-primary)
-*Feel: colder, clinical-premium dusk — slate-teal chrome with a coral-rose sun. Same polarity as V1 so the only perceived change is temperature — isolates "amber vs. coral" + "is a cooler base more adult".*
+### V3 — Slate / Coral (dark-primary, coral) — **RECORDED future temperament colorway candidate (not minted)**
+*Feel: colder, clinical-premium dusk — slate-teal chrome with a coral-rose sun. Same polarity as V1 so the only perceived change is temperature — isolated "amber vs. coral" + "is a cooler base more adult".*
+
+> **Did not win** (amber's first-light semantics + coral's alert-adjacency, per the §2 rationale). Preserved as a **candidate future coach-temperament colorway** (§12) — expressible as a class axis over the existing `--scene-*` props + emblem treatment, not a re-mint. If it graduates, its near-coral `destructive` must always pair an icon (§8, §11).
 
 | slot | OKLCH | note |
 |---|---|---|
@@ -123,7 +131,9 @@ Type is held **constant** across all three variants so the curation pass reads c
 
 **Scale (px):** 12 / 14 / 16 / 18 / 22 / 28 / 36. Body base **16px** (mobile — avoids iOS auto-zoom). Line-height 1.5 body, 1.15–1.2 display. Line length 60–75ch desktop / 35–60ch mobile.
 
-**Tokens to mint** (replaces the current `globals.css` font lines): `--font-sans: var(--font-hanken)` · `--font-heading: var(--font-fraunces)` · `--font-mono: var(--font-geist-mono)` (debug only — Geist is demoted to debug mono). Load via `next/font/google`, `display: swap`, one critical weight preloaded each. **No Inter / Geist / Roboto as brand face.**
+**Minted font tokens** (replaced the old `globals.css` font lines): `--font-sans: var(--font-hanken)` · `--font-heading: var(--font-fraunces)` · `--font-mono: var(--font-geist-mono)` (debug only — Geist Sans is demoted; Geist Mono survives as debug mono). **No Inter / Geist / Roboto as brand face.**
+
+**Wiring mechanism (as implemented).** Fraunces (variable weight + `opsz` axis) and Hanken Grotesk (400/500/600) load **app-wide in the root layout** (`src/app/layout.tsx`) via `next/font/google`, `display: swap`, exposed as `--font-fraunces` / `--font-hanken` on `<html>`. The three font tokens above live in the **`@theme inline`** block of `globals.css`. The `inline` keyword is load-bearing: Tailwind v4 *dereferences the `var()` expression at build*, so `.font-sans` / `.font-heading` emit `font-family: var(--font-hanken)` / `var(--font-fraunces)` — pointing at the runtime vars, resolved on `<html>`. (The bug this fixed: when these tokens read `var(--font-geist-sans)`, the utilities baked **Geist** in regardless of any wrapper override — the `/playground/dashboard` route had to carry a direct `.pg-root` font override to compensate. At the V1 mint the tokens were repointed and that bypass was deleted; the playground now renders Fraunces/Hanken through this global wiring, which is the proof the mint is correct.)
 
 ---
 
@@ -194,7 +204,7 @@ Five hues in the dawn palette — muted, distinguishable. **Never the sole meani
 
 **Build-time checks:** adjacent pairs differ by ≥~18° hue OR clearly in L; the dot clears 3:1 against its card in both modes. Always text-paired → passes color-not-only. Dot ≥8px with a 1px inner ring at 10% foreground.
 
-**Mint:** `--goal-color-0…4` = the light values in `:root`, the dark values in the `.dark` override. Keep the existing `@theme --color-goal-0…4 → var(--goal-color-N)` mapping unchanged.
+**Minted (dark-primary):** `--goal-color-0…4` in `:root` = the **dark (on dusk)** column above — the app's default ground is dusk, so the dark ramp is canonical. The existing `@theme --color-goal-0…4 → var(--goal-color-N)` mapping is unchanged. When light mode lands (V2), the **light (on pale-dawn)** column moves into that mode's override — with the on-white dot ≥3:1 check from the §2 V2 note.
 
 ---
 
@@ -282,7 +292,7 @@ The injected design-system DB contributes **only** this checklist (its visual va
 - **Contrast:** body text ≥ **4.5:1**; large text and non-text UI glyphs ≥ **3:1**. Verified at **both ends** of any gradient a text/emblem overlaps, in **both modes**, by the `verify:ui` axe-core harness — the prose numbers in this doc are DRAFT and not trusted.
 - **Focus:** visible focus rings, **2–4px**, brand-tied (the `ring` token = the accent).
 - **Pointer:** `cursor-pointer` on all clickables; hover transitions 150–300ms.
-- **Touch targets:** ≥ **44×44px**.
+- **Touch targets:** ≥ **44×44px**. **Product-graduation requirement (from curation review):** the `/playground/dashboard` components were sized for dense side-by-side curation — the **checkbox renders ~16px and the "Adjust" button ~28px** there. When these graduate to real product surfaces, their **interactive targets must be brought to ≥44×44px** (expand the hit area — padding / an enlarged label-wrap — without necessarily enlarging the visual glyph). Recorded so the playground sizes are not copied verbatim into product.
 - **Icons:** lucide SVG, **never emoji**.
 - **Motion:** `prefers-reduced-motion` respected everywhere (§7 map).
 - **No CLS:** reserved heights for scenes and rows.
