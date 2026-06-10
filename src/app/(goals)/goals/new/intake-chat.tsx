@@ -37,6 +37,14 @@ interface IntakeChatProps {
    * calling /api/ai/intake — the chat stays interactive with zero live API/DB.
    */
   fixtureMode?: boolean;
+  /**
+   * Lifts the completed intake summary to a parent so it can lead into the
+   * intensity confirmation card (Slice 4). When provided, the chat suppresses
+   * its own inline completion block — the parent owns the handoff. Absent in
+   * the standalone /playground/intake-chat harness, which keeps the inline
+   * completion handoff as its terminal state.
+   */
+  onIntakeComplete?: (summary: SummaryShape | null) => void;
 }
 
 type Turn = TranscriptTurn;
@@ -69,6 +77,7 @@ export function IntakeChat({
   initialTranscript,
   initiallyCompleted,
   fixtureMode = false,
+  onIntakeComplete,
 }: IntakeChatProps) {
   const [turns, setTurns] = useState<Turn[]>(initialTranscript);
   const [input, setInput] = useState("");
@@ -171,6 +180,9 @@ export function IntakeChat({
             goal_draft_id: goalDraftId,
             turn_count: count,
           });
+          // Hand the summary up so the parent can lead into the intensity
+          // confirmation card.
+          onIntakeComplete?.(summary);
         },
         onError: (msg) => setError(msg),
       });
@@ -187,6 +199,7 @@ export function IntakeChat({
     seed,
     initialTranscript,
     fixtureMode,
+    onIntakeComplete,
   ]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -211,7 +224,7 @@ export function IntakeChat({
         {turns.map((turn, i) => (
           <Message key={i} role={turn.role} content={turn.content} />
         ))}
-        {completed && (
+        {completed && !onIntakeComplete && (
           <div className="rounded-xl border border-border bg-card p-4">
             <p className="text-base leading-relaxed text-foreground">
               That&apos;s everything I need. I&apos;ll put together a plan from

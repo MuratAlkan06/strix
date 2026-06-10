@@ -23,6 +23,10 @@ import {
   generateSessionToken,
 } from "@/lib/ai/session";
 import { asTranscript, type TranscriptTurn } from "@/lib/ai/transcript";
+import {
+  asIntakeSummaryDraft,
+  type IntakeSummaryDraft,
+} from "./intensity-confirm";
 
 export interface ResolvedDraft {
   id: string;
@@ -30,6 +34,12 @@ export interface ResolvedDraft {
   transcript: TranscriptTurn[];
   /** True when intake has already produced a summary (completion handoff). */
   completed: boolean;
+  /**
+   * The card-relevant slice of intake_summary_draft (suggestion + reasoning +
+   * the user's pick once confirmed), or null while intake is still in progress.
+   * Drives the page's chat / confirm / interim surface routing.
+   */
+  summary: IntakeSummaryDraft | null;
 }
 
 /**
@@ -58,6 +68,7 @@ export async function resolveDraft(
         seed: existing.seed,
         transcript: asTranscript(existing.raw_transcript),
         completed: existing.intake_summary_draft != null,
+        summary: asIntakeSummaryDraft(existing.intake_summary_draft),
       };
     }
     // Cookie present but no matching row (expired/swept) — fall through to
@@ -86,5 +97,6 @@ export async function resolveDraft(
     seed: row.seed,
     transcript: [],
     completed: false,
+    summary: null,
   };
 }

@@ -25,7 +25,8 @@ import { auth } from "@clerk/nextjs/server";
 
 import { resolveDraft } from "./draft";
 import { decideSeed } from "./seed-guard";
-import { IntakeChat } from "./intake-chat";
+import { IntakeFlow } from "./intake-flow";
+import { resolveSurface } from "./intensity-confirm";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,10 @@ export default async function GoalIntakePage({ searchParams }: PageProps) {
 
   const draft = await resolveDraft(userId, seed);
 
+  // Server-derived surface routing (resumable): a completed-intake draft with
+  // an unconfirmed intensity resumes at the card; a confirmed one at interim.
+  const surface = resolveSurface({ summary: draft.summary });
+
   return (
     <main className="mx-auto flex h-[calc(100dvh-1px)] w-full max-w-2xl flex-col gap-4 p-4 sm:p-6">
       <header className="flex flex-col gap-1">
@@ -59,11 +64,12 @@ export default async function GoalIntakePage({ searchParams }: PageProps) {
         </p>
       </header>
 
-      <IntakeChat
+      <IntakeFlow
         goalDraftId={draft.id}
         seed={draft.seed}
         initialTranscript={draft.transcript}
-        initiallyCompleted={draft.completed}
+        initialSurface={surface}
+        initialSummary={draft.summary}
       />
     </main>
   );
