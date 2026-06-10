@@ -160,3 +160,5 @@ Schema-level §10 notes:
 | 5 | [planning/phase-5-polish.md](planning/phase-5-polish.md) | Full PostHog event taxonomy, Patagonia-register copy pass across third-party surfaces, accessibility audit, Playwright golden-path E2E. |
 
 Each phase file is self-contained: items to build, verification criteria for that phase, and phase-specific context (prompts, schema notes, edge cases). Phases must land in order; Phase 2.5 strictly gates Phase 3.
+
+**Shipped:** Phase 0 closed 2026-06-10 (see [planning/phase-0-foundations.md](planning/phase-0-foundations.md) status header). Design-infrastructure work package (issue #1, PR #2) shipped 2026-06-10 as **v0.2.0**: the DAWN design system is frozen ([docs/DESIGN.md](docs/DESIGN.md)), the `verify:ui` axe + screenshot CI gate is live, and motion primitives landed — Phase 1 UI builds on it (see the Design-system handoff in [planning/phase-1-golden-path.md](planning/phase-1-golden-path.md)).
