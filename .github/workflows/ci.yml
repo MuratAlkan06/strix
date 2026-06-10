@@ -32,10 +32,17 @@ jobs:
   # verify-phase so build + `next start` boot with zero repository secrets.
   verify-ui:
     runs-on: ubuntu-latest
+    # Clerk env (zero real secrets). `next start` THROWS on boot if the publishable
+    # key is missing or malformed, so we pass a FORMAT-VALID dummy
+    # (pk_test_ + base64("clerk.example.com$")). That host is unreachable, but the
+    # playground is excluded from clerkMiddleware (src/proxy.ts matcher), so it never
+    # triggers Clerk's dev-browser handshake redirect to that host — the route renders
+    # deterministically with no Clerk frontend API reachable. DATABASE_URL is a
+    # harmless placeholder for the build step.
     env:
       DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
       CLERK_SECRET_KEY: sk_test_placeholder
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
