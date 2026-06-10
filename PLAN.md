@@ -130,8 +130,8 @@ Schema-level §10 notes:
 | Billing provider | Stripe | Trials with card, monthly + annual, refunds via API. |
 | Email | Resend transactional only | No retention emails per spec §10. |
 | Background jobs | Inngest | Auto-archive @7d; hard-delete @30d; usage-counter reset; future v2 notifications. |
-| Visual design tokens | Earth tones / deep blues / off-whites + restrained typography; specific palette set during design pass after structural build. CSS variables make swaps trivial. | Spec §4 locks register, not tokens. |
-| Goal-color palette | Fixed 5 colors from a calibrated earth-tone set; assigned at creation in first-unused order; reassignable manually. | Spec §8 visual attribution. |
+| Visual design tokens | Dawn-atmospheric palette (deep indigo/dusk grounds + pale dawn neutrals + warm sun accents) with Fraunces/Hanken typography; chrome polarity + accent curated then minted once. CSS variables make swaps trivial. See docs/DESIGN.md (the DAWN system). | Spec §4 locks register, not tokens. |
+| Goal-color palette | Fixed 5 dawn-derived hues; assigned at creation in first-unused order; reassignable manually; always paired with goal-name text. | Spec §8 visual attribution. |
 
 ## 5. Constraint flags + resolutions
 

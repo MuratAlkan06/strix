@@ -18,6 +18,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "verify:phase-0": "node scripts/verify-phase.mjs 0",
+    "verify:ui": "playwright test",
+    "verify:ui:update": "playwright test --update-snapshots",
     "verify:db-schema": "tsx --env-file=.env.local scripts/verify-schema.ts",
     "smoke:scoped-db": "tsx --env-file=.env.local scripts/smoke-scoped-db.ts",
     "smoke:posthog": "tsx --env-file=.env.local scripts/smoke-posthog.ts"
@@ -38,6 +40,7 @@
     "drizzle-orm": "^0.36.4",
     "inngest": "^3.27.5",
     "lucide-react": "^0.469.0",
+    "motion": "^12.40.0",
     "next": "16.2.6",
     "next-themes": "^0.4.6",
     "posthog-js": "^1.205.0",
@@ -52,6 +55,8 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

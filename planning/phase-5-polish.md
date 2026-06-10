@@ -64,7 +64,7 @@ Spec §4 brand register — voice is "Coaching, not cheerleading." Declarative, 
 - Run `axe-core` against every route in dev. Fix all violations except documented exceptions.
 - Keyboard navigation: tab through full intake, replan diff, downgrade screen — every action reachable without a pointer.
 - Screen reader pass on: dashboard "today" section (must read goal color via ARIA label, not just visual cue), check-off (must announce state change), replan diff (must clearly separate additions/removals).
-- Contrast: earth-tone palette must meet WCAG AA on body text. Goal colors are visual indicators, not the sole carrier of meaning — always paired with text labels.
+- Contrast: the DAWN palette (V1 Dusk, dark-primary) must meet WCAG AA on body text. Goal colors are visual indicators, not the sole carrier of meaning — always paired with text labels. The `verify:ui` axe gate now enforces this on the playground surface.
 - Touch targets ≥ 44pt (already enforced in Phase 2.5; re-verify after polish).
 
 ### Playwright golden-path E2E
