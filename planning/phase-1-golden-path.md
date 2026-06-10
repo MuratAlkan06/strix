@@ -25,7 +25,7 @@
 
 ### Goal intake conversational chat
 
-- Route: `app/(goals)/new/page.tsx`. Streaming chat UI. **All intake state (raw transcript, partial structured fields) is staged in `goal_drafts`** — on first landing, the server generates a random `session_token` (~32 bytes base64url), inserts a `goal_drafts` row keyed by `session_token`, and writes the token to an HttpOnly cookie. Every subsequent request reads the cookie → loads the draft. Drafts expire after 30 days (Inngest sweep handles cleanup).
+- Route: `app/(goals)/goals/new/page.tsx (serving /goals/new)`. Streaming chat UI. **All intake state (raw transcript, partial structured fields) is staged in `goal_drafts`** — on first landing, the server generates a random `session_token` (~32 bytes base64url), inserts a `goal_drafts` row keyed by `session_token`, and writes the token to an HttpOnly cookie. Every subsequent request reads the cookie → loads the draft. Drafts expire after 30 days (Inngest sweep handles cleanup).
 - Server-side AI route: `POST /api/ai/intake` — accepts message history + seed + draft_id, returns a streaming response. Server-side per-message logging appends to `goal_drafts.raw_transcript` (jsonb append).
 - Model: `claude-sonnet-4-6`. System prompt establishes:
   - Patagonia/Arc'teryx voice — coaching, not cheerleading; declarative; plain.

@@ -136,6 +136,7 @@ Don't bother for short fixes or single-purpose sessions — the cost outweighs t
 src/
 ├── app/
 │   ├── api/
+│   │   ├── ai/intake/route.ts       # POST: streaming (SSE) goal-intake endpoint
 │   │   ├── inngest/route.ts         # serve({ signingKey })
 │   │   ├── me/goals/route.ts        # authed scopedDb round trip (Phase 1 seed)
 │   │   └── webhooks/clerk/
@@ -144,6 +145,13 @@ src/
 │   ├── (dashboard)/
 │   │   ├── layout.tsx               # authenticated product-shell segment
 │   │   └── dashboard/page.tsx       # /dashboard — empty-state / active landing
+│   ├── (goals)/
+│   │   ├── layout.tsx               # authenticated goals-shell segment
+│   │   └── goals/new/
+│   │       ├── page.tsx             # /goals/new — intake chat (seed-validated)
+│   │       ├── draft.ts             # goal_drafts bootstrap + HttpOnly cookie
+│   │       ├── seed-guard.ts        # pure ?seed= 400-decision predicate
+│   │       └── intake-chat.tsx      # streaming chat UI (client)
 │   ├── (settings)/settings/page.tsx # placeholder shell
 │   ├── globals.css                  # goal-color palette CSS vars + shadcn tokens
 │   ├── page.tsx                     # public landing; redirects signed-in → /dashboard
@@ -160,6 +168,8 @@ src/
 │   ├── unscoped.ts                  # escape hatch (CI-restricted)
 │   └── migrate.ts                   # prod migration runner
 ├── lib/
+│   ├── ai/                          # Anthropic chokepoint (ADR-0001): client, intake,
+│   │                                #   canonicalize, prompts, schema, session, log
 │   ├── analytics/{server,client}.ts # PostHog wrappers
 │   ├── inngest/
 │   │   ├── client.ts                # Inngest client
@@ -169,6 +179,9 @@ src/
 └── proxy.ts                         # clerkMiddleware + public-route whitelist
                                      # (Next 16 renamed middleware.ts → proxy.ts)
 ```
+
+Architecture decisions live in `docs/adr/` — `0001-ai-client-stack.md` records
+the direct-`@anthropic-ai/sdk` choice and the `src/lib/ai/` chokepoint.
 
 ## Local webhook delivery
 

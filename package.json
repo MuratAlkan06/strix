@@ -25,6 +25,7 @@
     "smoke:posthog": "tsx --env-file=.env.local scripts/smoke-posthog.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.104.1",
     "@base-ui/react": "^1.5.0",
     "@clerk/nextjs": "^6.16.0",
     "@neondatabase/serverless": "^0.10.4",
