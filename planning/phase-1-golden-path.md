@@ -18,7 +18,7 @@
 
 ### Empty-state dashboard
 
-- Route: `app/(dashboard)/page.tsx`. Default landing for authenticated users.
+- Route: app/(dashboard)/dashboard/page.tsx, serving /dashboard. The default landing for authenticated users (signed-in users hitting / are redirected here). / itself stays the public landing page. (Routing decision 2026-06-10: a page in the (dashboard) group at the root would resolve to /, colliding with the public landing; serving the dashboard at /dashboard and redirecting signed-in users from / keeps / static/SEO-clean for the Phase3 + public marketing/pricing surface.)
 - If `count(goals where status='active') = 0`: render empty state. One primary CTA ("Create your first goal") + 5 example tiles: **Climb a mountain · Learn a language · Run a race · Write a book · Learn an instrument**. (Tiles = existing Scene variants — see Design-system handoff above.)
 - Clicking a tile navigates to `/goals/new?seed=climb` (and `language`, `race`, `book`, `instrument`). **Seed values are whitelisted server-side to exactly `{climb, language, race, book, instrument}`** — any other value is rejected before being passed to the AI prompt (prompt-injection mitigation).
 - Copy register: Patagonia/Arc'teryx. Hero copy is declarative, low on exclamation. No "Crush it" energy. (Final copy pass is Phase 5; first cut must already be in register.)

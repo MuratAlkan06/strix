@@ -141,10 +141,17 @@ src/
 │   │   └── webhooks/clerk/
 │   │       ├── route.ts             # svix-verified Clerk webhook + signup analytics
 │   │       └── route.test.ts        # signature-gate integration tests
+│   ├── (dashboard)/
+│   │   ├── layout.tsx               # authenticated product-shell segment
+│   │   └── dashboard/page.tsx       # /dashboard — empty-state / active landing
 │   ├── (settings)/settings/page.tsx # placeholder shell
 │   ├── globals.css                  # goal-color palette CSS vars + shadcn tokens
+│   ├── page.tsx                     # public landing; redirects signed-in → /dashboard
 │   └── layout.tsx                   # ClerkProvider
-├── components/ui/                   # shadcn/ui (button, card, dialog, … sonner)
+├── components/
+│   ├── ui/                          # shadcn/ui (button, card, dialog, … sonner)
+│   ├── scene.tsx                    # the one DAWN illustration primitive (tiles are data)
+│   └── empty-dashboard.tsx          # empty-state composition (pre-dawn scene + CTA + tiles)
 ├── db/
 │   ├── schema.ts                    # all tables, enums, indexes
 │   ├── client.ts                    # drizzle + neon-http (private; Layer 2/4 guarded)
@@ -157,6 +164,7 @@ src/
 │   ├── inngest/
 │   │   ├── client.ts                # Inngest client
 │   │   └── sweep-expired-goal-drafts.ts # daily cron: prune expired goal_drafts
+│   ├── goal-seeds.ts                # empty-state tiles + the {climb,…} seed whitelist
 │   └── utils.ts                     # shadcn cn() helper
 └── proxy.ts                         # clerkMiddleware + public-route whitelist
                                      # (Next 16 renamed middleware.ts → proxy.ts)
