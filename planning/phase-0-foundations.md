@@ -1,5 +1,7 @@
 # Phase 0 — Foundations
 
+**Status: CLOSED 2026-06-10.** All gates satisfied: scopedDb leak tests pass (27 unit/integration tests, 17 live-DB smoke assertions, 17 schema invariants, CI green); a real Clerk-authed signup produced a `users` row (verified, plus the signed-in `/api/me/goals` → `[]` and `/settings` shell checks); Clerk webhook signature verification rejects unsigned payloads (live 400 + integration test suite). Two notes: the Inngest unsigned-rejection check is deferred to first deploy (`INNGEST_DEV=1` bypasses validation locally by design, and no functions register until Phase 2 — the `serve()` config already passes `signingKey`); the gate line's "Stripe-stub" has no Phase 0 route to verify — Phase 3 builds the Stripe webhook with its own signature integration test.
+
 **Goal:** All scaffolding and infrastructure for the §9 loop. No user-facing product yet — just an authenticated empty shell that knows who the user is and can write to the database.
 
 **Prerequisites:** None. This is the first phase.
