@@ -6,12 +6,20 @@
 
 **Gates:** Phase 2 cannot start until a user can complete steps 1–8 of the verification list without intervention.
 
+### Design-system handoff (added 2026-06-10)
+
+- All Phase 1 UI builds on the FROZEN DAWN system — docs/DESIGN.md is the binding oracle: V1 Dusk dark-primary tokens live in src/app/globals.css (no re-mint); Fraunces + Hanken Grotesk load app-wide from the root layout; the anti-slop banlist (§9), state philosophy (§8), and motion personality (§7) are binding on every surface in this phase.
+- REUSE, do not rebuild: src/components/scene.tsx + scene-data.ts, horizon-header.tsx, goal-chip.tsx, countdown-stat.tsx, emblem.tsx, and ui/checkbox graduate from the playground to product surfaces. The empty-state dashboard's 5 example tiles ARE the existing Scene variants (mountain / language / race / book / instrument) rendered in pre-dawn state (DESIGN.md §4); they switch to dawn once a goal exists.
+- Graduation requirements (DESIGN.md §11, binding when these components land on product surfaces): interactive targets ≥44×44px (the playground's 16px checkbox / 28px button must NOT be copied as-is); the shared button primitive gains cursor-pointer; one h1 per page.
+- The active dashboard is the playground composition graduated: HorizonHeader (dawn state), GoalChip text-paired color attribution (color never the sole signal), tabular-nums countdowns.
+- verify:ui currently baselines /playground/dashboard; when the product dashboard ships, extend or re-target the harness — keep the playground (noindexed, Clerk-excluded) until then.
+
 ## Items to build
 
 ### Empty-state dashboard
 
 - Route: `app/(dashboard)/page.tsx`. Default landing for authenticated users.
-- If `count(goals where status='active') = 0`: render empty state. One primary CTA ("Create your first goal") + 5 example tiles: **Climb a mountain · Learn a language · Run a race · Write a book · Learn an instrument**.
+- If `count(goals where status='active') = 0`: render empty state. One primary CTA ("Create your first goal") + 5 example tiles: **Climb a mountain · Learn a language · Run a race · Write a book · Learn an instrument**. (Tiles = existing Scene variants — see Design-system handoff above.)
 - Clicking a tile navigates to `/goals/new?seed=climb` (and `language`, `race`, `book`, `instrument`). **Seed values are whitelisted server-side to exactly `{climb, language, race, book, instrument}`** — any other value is rejected before being passed to the AI prompt (prompt-injection mitigation).
 - Copy register: Patagonia/Arc'teryx. Hero copy is declarative, low on exclamation. No "Crush it" energy. (Final copy pass is Phase 5; first cut must already be in register.)
 
@@ -38,6 +46,7 @@
   - Primary action: "Continue with {selected}" — writes `intake_summaries.suggested_intensity` and `intake_summaries.confirmed_intensity` (the latter being the user's pick), updates `users.intensity_preference` with the user's pick via `scopedDb.updateSelf()`, then proceeds to plan generation. `users.intensity_preference`'s roles are: the **final fallback** in the intensity chain (`goals.intensity_override` → `intake_summaries.confirmed_intensity` → `users.intensity_preference`) and the default shown in Settings. It does **not** anchor future confirmation cards — every goal's card pre-selects the AI's `suggested_intensity` for that goal.
 - The user **must pick explicitly** — no auto-proceed, no default-on-skip. If they navigate away without picking, the draft persists and they resume here on return.
 - Spec §8 compliance: the AI suggests, the user actively chooses; never silent, never auto-applied.
+- Build note (2026-06-10): a narrow product-architect pass at phase kickoff decides whether this card is built as a generic "AI-suggests → user-confirms" ritual component (coach-temperament extension point, DESIGN.md §12) — incorporate its verdict before implementing this card.
 
 ### Safety-override flow
 
