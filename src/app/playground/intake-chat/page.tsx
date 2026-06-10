@@ -11,9 +11,14 @@
  * /api/ai/intake call, and the transcript is hardcoded, so both review states
  * are reachable and byte-stable with no auth, no DB, and no model call.
  *
- * Two states, selected by ?state=:
+ * Three states, selected by ?state=:
  *   default        — mid-conversation (seed=race opener + ~4 turns), input enabled
  *   ?state=complete — the completion handoff shown after intake_summary_draft
+ *   ?state=safety  — the safety-override decision card (Slice 5): a risky
+ *                    goal+timeline exchange with an undecided flag. Both
+ *                    buttons are interactive and flip local state only
+ *                    (fixtureMode: no server action) — the card settles into
+ *                    the decision status line and the composer releases.
  *
  * The /playground(.*) Clerk matcher (src/proxy.ts) makes it reachable without
  * auth; the segment layout (src/app/playground/layout.tsx) noindexes it. The
@@ -21,6 +26,7 @@
  *
  * Fixture copy is Patagonia register: declarative, plain, no exclamation.
  */
+import type { SafetyFlagPayload } from "@/lib/ai/safety-flags";
 import type { TranscriptTurn } from "@/lib/ai/transcript";
 
 import { IntakeChat } from "../../(goals)/goals/new/intake-chat";
@@ -50,6 +56,34 @@ const RACE_TRANSCRIPT: TranscriptTurn[] = [
   },
 ];
 
+// The safety state: a risky goal+timeline exchange, frozen at the assistant's
+// pushback. The flag mirrors the prompt's worked example (prompts/intake.ts
+// <safety>): concern is the short noun phrase completing the card header.
+const SAFETY_TRANSCRIPT: TranscriptTurn[] = [
+  {
+    role: "assistant",
+    content:
+      "Tell me what you want to work toward, and where you're starting from today.",
+  },
+  {
+    role: "user",
+    content:
+      "I want to lose 20 pounds in two weeks. There's a wedding coming up.",
+  },
+  {
+    role: "assistant",
+    content:
+      "Twenty pounds in two weeks isn't safe to target — most of it would be water, and the rebound is rough. We can aim for four to six pounds in those two weeks and set up the habit that keeps going after the wedding. Want to plan it that way?",
+  },
+];
+
+const SAFETY_FLAG: SafetyFlagPayload = {
+  concern: "the 20-pound target in two weeks",
+  alternative: "4-6 lbs in 2 weeks plus a continuing habit",
+  reasoning:
+    "Twenty pounds in two weeks isn't safe to target — most of it would be water weight, and the rebound is rough.",
+};
+
 interface PageProps {
   searchParams: Promise<{ state?: string | string[] }>;
 }
@@ -58,7 +92,10 @@ export default async function PlaygroundIntakeChatPage({
   searchParams,
 }: PageProps) {
   const { state } = await searchParams;
-  const complete = Array.isArray(state) ? state.includes("complete") : state === "complete";
+  const pick = (s: string) =>
+    Array.isArray(state) ? state.includes(s) : state === s;
+  const complete = pick("complete");
+  const safety = pick("safety");
 
   return (
     <main className="mx-auto flex h-[calc(100dvh-1px)] w-full max-w-2xl flex-col gap-4 p-4 sm:p-6">
@@ -74,9 +111,10 @@ export default async function PlaygroundIntakeChatPage({
       <IntakeChat
         fixtureMode
         goalDraftId="playground-fixture"
-        seed="race"
-        initialTranscript={RACE_TRANSCRIPT}
+        seed={safety ? null : "race"}
+        initialTranscript={safety ? SAFETY_TRANSCRIPT : RACE_TRANSCRIPT}
         initiallyCompleted={complete}
+        initialPendingFlag={safety ? SAFETY_FLAG : null}
       />
     </main>
   );

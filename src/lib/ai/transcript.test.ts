@@ -65,6 +65,15 @@ describe("countUserTurns", () => {
     ];
     expect(countUserTurns(t)).toBe(2);
   });
+
+  it("excludes kind:decision turns (a button choice is not a conversational turn)", () => {
+    const t: TranscriptTurn[] = [
+      { role: "user", content: "1" },
+      { role: "user", kind: "decision", content: "Decision: use the safer plan." },
+      { role: "user", content: "2" },
+    ];
+    expect(countUserTurns(t)).toBe(2);
+  });
 });
 
 describe("isAtUserTurnCap (hard cap 10)", () => {
@@ -86,6 +95,14 @@ describe("isAtUserTurnCap (hard cap 10)", () => {
       ...userTurns(9),
       { role: "assistant", content: "x" },
       { role: "assistant", content: "y" },
+    ];
+    expect(isAtUserTurnCap(t)).toBe(false);
+  });
+
+  it("ignores decision turns when counting toward the cap", () => {
+    const t: TranscriptTurn[] = [
+      ...userTurns(9),
+      { role: "user", kind: "decision", content: "Decision: use the safer plan." },
     ];
     expect(isAtUserTurnCap(t)).toBe(false);
   });

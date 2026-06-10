@@ -17,7 +17,7 @@ import type { MessageStream } from "@anthropic-ai/sdk/lib/MessageStream";
 import { getClient } from "./client";
 import { MODEL_SONNET } from "./models";
 import { intakeSystem } from "./prompts/intake";
-import { SUBMIT_INTAKE_TOOL } from "./intake-schema";
+import { FLAG_SAFETY_TOOL, SUBMIT_INTAKE_TOOL } from "./intake-schema";
 
 const MAX_TOKENS = 1024;
 
@@ -73,7 +73,7 @@ export function streamIntake(args: StreamIntakeArgs): MessageStream {
     max_tokens: MAX_TOKENS,
     system: intakeSystem(),
     messages: buildIntakeMessages(args),
-    tools: [SUBMIT_INTAKE_TOOL],
+    tools: [SUBMIT_INTAKE_TOOL, FLAG_SAFETY_TOOL],
     tool_choice: { type: "auto" },
   });
 }

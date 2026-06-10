@@ -25,12 +25,22 @@ import { DRAFT_COOKIE_NAME } from "@/lib/ai/session";
 import { streamIntake } from "@/lib/ai/intake";
 import { canonicalize } from "@/lib/ai/canonicalize";
 import {
+  flagSafetySchema,
   submitIntakeSchema,
+  FLAG_SAFETY_TOOL_NAME,
   SUBMIT_INTAKE_TOOL_NAME,
+  type FlagSafetyInput,
   type SubmitIntakeInput,
 } from "@/lib/ai/intake-schema";
 import {
-  appendTurn,
+  appendFlag,
+  asEventLog,
+  mergeSafetyFlags,
+  pendingFlag,
+  stagedFlags,
+  type IntakeEvent,
+} from "@/lib/ai/safety-flags";
+import {
   asTranscript,
   isAtUserTurnCap,
   toMessageParams,
@@ -85,15 +95,24 @@ export async function POST(req: Request): Promise<Response> {
     return new Response("Goal draft not found.", { status: 404 });
   }
 
-  const transcript = asTranscript(draft.raw_transcript);
+  // raw_transcript is an event log: conversational turns + staged safety
+  // flags. asTranscript() is the conversational view; the flag entries are
+  // preserved across writes (rewriting only the filtered view would drop them).
+  const log = asEventLog(draft.raw_transcript);
 
   // Enforce the hard cap before spending a model call.
-  if (isAtUserTurnCap(transcript)) {
+  if (isAtUserTurnCap(asTranscript(log))) {
     return new Response("Intake turn cap reached.", { status: 409 });
   }
 
+  // Pending-decision discipline (server side of the composer hold): while a
+  // safety flag is undecided, the explicit card choice must come first.
+  if (pendingFlag(log)) {
+    return new Response("A safety decision is pending.", { status: 409 });
+  }
+
   const userTurn: TranscriptTurn = { role: "user", content: message };
-  const withUser = appendTurn(transcript, userTurn);
+  const withUser: IntakeEvent[] = [...log, userTurn];
 
   // Persist the user turn immediately so a mid-stream disconnect still records
   // what the user said.
@@ -105,7 +124,7 @@ export async function POST(req: Request): Promise<Response> {
   let stream;
   try {
     stream = streamIntake({
-      messages: toMessageParams(withUser),
+      messages: toMessageParams(asTranscript(withUser)),
       seed: draft.seed,
     });
   } catch {
@@ -123,11 +142,24 @@ export async function POST(req: Request): Promise<Response> {
 
         const finalMessage = await stream.finalMessage();
 
-        // Persist the assistant turn (prose part) onto the transcript.
-        const withAssistant = appendTurn(withUser, {
-          role: "assistant",
-          content: assistantText,
-        });
+        // Persist the assistant turn (prose part) onto the event log.
+        let withAssistant: IntakeEvent[] = [
+          ...withUser,
+          { role: "assistant", content: assistantText },
+        ];
+
+        // Mid-conversation safety pushback: stage each valid flag_safety call
+        // (undecided) onto the log; the SSE event below renders the card.
+        const flagged: FlagSafetyInput[] = [];
+        for (const block of finalMessage.content) {
+          if (block.type !== "tool_use" || block.name !== FLAG_SAFETY_TOOL_NAME)
+            continue;
+          const parsedFlag = flagSafetySchema.safeParse(block.input);
+          if (parsedFlag.success) {
+            withAssistant = appendFlag(withAssistant, parsedFlag.data);
+            flagged.push(parsedFlag.data);
+          }
+        }
 
         // Did the model terminate via submit_intake?
         const toolUse = finalMessage.content.find(
@@ -138,9 +170,16 @@ export async function POST(req: Request): Promise<Response> {
         if (toolUse && toolUse.type === "tool_use") {
           const parsed = submitIntakeSchema.safeParse(toolUse.input);
           if (parsed.success) {
+            // Merge staged decisions into the final safety_flags: staged
+            // flags carry the user's user_overrode/decided_at; model-only
+            // flags keep null decisions (the product is the decider's pen).
+            const merged = mergeSafetyFlags(
+              stagedFlags(withAssistant),
+              parsed.data.safety_flags,
+            );
             const summary = await buildSummaryDraft(
-              parsed.data,
-              withAssistant,
+              { ...parsed.data, safety_flags: merged },
+              asTranscript(withAssistant),
             );
             await sdb.update(goal_drafts, {
               set: {
@@ -166,6 +205,12 @@ export async function POST(req: Request): Promise<Response> {
             set: { raw_transcript: withAssistant },
             where: eq(goal_drafts.id, draft.id),
           });
+        }
+
+        // Emit the decision card(s) only after the flag is durably staged, so
+        // a rendered card always has a server-side pending flag behind it.
+        for (const flag of flagged) {
+          controller.enqueue(sse("safety_flag", { flag }));
         }
 
         logAiUsage(toUsageLog("intake", MODEL_SONNET, finalMessage.usage));

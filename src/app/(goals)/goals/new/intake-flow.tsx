@@ -25,11 +25,13 @@ import {
   IntensityInterim,
 } from "./intensity-confirm-card";
 import { confirmIntensity } from "./confirm-intensity";
+import { decideSafety } from "./decide-safety";
 import {
   asIntakeSummaryDraft,
   type IntakeSummaryDraft,
   type Intensity,
 } from "./intensity-confirm";
+import type { SafetyFlagPayload } from "@/lib/ai/safety-flags";
 import type { TranscriptTurn } from "@/lib/ai/transcript";
 
 type Surface = "chat" | "confirm" | "interim";
@@ -42,6 +44,8 @@ interface IntakeFlowProps {
   initialSurface: Surface;
   /** Present when initialSurface is "confirm" or "interim". */
   initialSummary: IntakeSummaryDraft | null;
+  /** Server-derived undecided safety flag (resume mid-decision), or null. */
+  initialPendingFlag: SafetyFlagPayload | null;
 }
 
 export function IntakeFlow({
@@ -50,6 +54,7 @@ export function IntakeFlow({
   initialTranscript,
   initialSurface,
   initialSummary,
+  initialPendingFlag,
 }: IntakeFlowProps) {
   const [surface, setSurface] = useState<Surface>(initialSurface);
   const [summary, setSummary] = useState<IntakeSummaryDraft | null>(
@@ -80,6 +85,11 @@ export function IntakeFlow({
       seed={seed}
       initialTranscript={initialTranscript}
       initiallyCompleted={false}
+      initialPendingFlag={initialPendingFlag}
+      onDecideSafety={async (userOverrode: boolean) => {
+        const result = await decideSafety(userOverrode);
+        return result.ok;
+      }}
       onIntakeComplete={(raw) => {
         const parsed = asIntakeSummaryDraft(raw);
         if (parsed) {

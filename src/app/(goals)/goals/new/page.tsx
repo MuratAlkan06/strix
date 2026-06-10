@@ -70,6 +70,7 @@ export default async function GoalIntakePage({ searchParams }: PageProps) {
         initialTranscript={draft.transcript}
         initialSurface={surface}
         initialSummary={draft.summary}
+        initialPendingFlag={draft.pendingSafetyFlag}
       />
     </main>
   );

@@ -41,6 +41,17 @@ export const safetyFlagSchema = z.object({
   decided_at: z.string().nullable(),
 });
 
+/** flag_safety tool input — the mid-conversation pushback payload (Slice 5).
+ *  The model calls this alongside its conversational pushback; the product
+ *  renders it as a decision card and the user decides. */
+export const flagSafetySchema = z.object({
+  concern: z.string().min(1),
+  alternative: z.string().min(1),
+  reasoning: z.string().min(1),
+});
+
+export type FlagSafetyInput = z.infer<typeof flagSafetySchema>;
+
 export const submitIntakeSchema = z.object({
   one_sentence_goal: z.string().min(1),
   starting_point: z.string().min(1),
@@ -62,6 +73,43 @@ export const submitIntakeSchema = z.object({
 export type SubmitIntakeInput = z.infer<typeof submitIntakeSchema>;
 
 export const SUBMIT_INTAKE_TOOL_NAME = "submit_intake" as const;
+
+export const FLAG_SAFETY_TOOL_NAME = "flag_safety" as const;
+
+/**
+ * The tool the model calls WHILE pushing back on a risky goal+timeline —
+ * mid-conversation, in the same response as the conversational pushback
+ * (tool_choice stays auto). The product renders the input as a decision card;
+ * the user's decision is recorded by the product, never by the model.
+ */
+export const FLAG_SAFETY_TOOL: Tool = {
+  name: FLAG_SAFETY_TOOL_NAME,
+  description:
+    "Flag a risky goal+timeline combination. Call this in the SAME response " +
+    "as your conversational pushback, once per distinct concern. The product " +
+    "renders a decision card; the user decides. This is not a refusal.",
+  input_schema: {
+    type: "object",
+    properties: {
+      concern: {
+        type: "string",
+        description:
+          'A short noun phrase completing "We should reconsider {concern}." ' +
+          '— e.g. "the 20-pound target in two weeks". Never a full sentence.',
+      },
+      alternative: {
+        type: "string",
+        description: "The safer plan, named plainly in one sentence.",
+      },
+      reasoning: {
+        type: "string",
+        description:
+          "The one- or two-sentence case you made in the pushback prose.",
+      },
+    },
+    required: ["concern", "alternative", "reasoning"],
+  },
+};
 
 /**
  * The tool the model calls to terminate intake. tool_choice stays `auto` so the

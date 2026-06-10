@@ -24,6 +24,12 @@ import {
 } from "@/lib/ai/session";
 import { asTranscript, type TranscriptTurn } from "@/lib/ai/transcript";
 import {
+  asEventLog,
+  pendingFlag,
+  toFlagPayload,
+  type SafetyFlagPayload,
+} from "@/lib/ai/safety-flags";
+import {
   asIntakeSummaryDraft,
   type IntakeSummaryDraft,
 } from "./intensity-confirm";
@@ -40,6 +46,13 @@ export interface ResolvedDraft {
    * Drives the page's chat / confirm / interim surface routing.
    */
   summary: IntakeSummaryDraft | null;
+  /**
+   * An undecided safety flag staged in the draft's event log, or null. On a
+   * resume mid-decision the chat re-renders the decision card from this and
+   * holds the composer until the user decides (server-derived, like the
+   * surface routing).
+   */
+  pendingSafetyFlag: SafetyFlagPayload | null;
 }
 
 /**
@@ -63,12 +76,15 @@ export async function resolveDraft(
     });
     const existing = rows[0];
     if (existing) {
+      const log = asEventLog(existing.raw_transcript);
+      const pending = pendingFlag(log);
       return {
         id: existing.id,
         seed: existing.seed,
         transcript: asTranscript(existing.raw_transcript),
         completed: existing.intake_summary_draft != null,
         summary: asIntakeSummaryDraft(existing.intake_summary_draft),
+        pendingSafetyFlag: pending ? toFlagPayload(pending) : null,
       };
     }
     // Cookie present but no matching row (expired/swept) — fall through to
@@ -98,5 +114,6 @@ export async function resolveDraft(
     transcript: [],
     completed: false,
     summary: null,
+    pendingSafetyFlag: null,
   };
 }

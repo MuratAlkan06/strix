@@ -12,9 +12,12 @@
  * intake_turn_count on completion; intake_drop_off_turn best-effort on
  * navigate-away mid-intake.
  *
- * Completion handoff is a calm terminal state only — the intensity confirmation
- * card (Slice 4) and safety decision cards (Slice 5) are NOT built here; safety
- * pushback arrives as ordinary assistant prose.
+ * Completion handoff is a calm terminal state only — the intensity
+ * confirmation card (Slice 4) hands off to the parent. Safety pushback
+ * (Slice 5) arrives as assistant prose PLUS a safety_flag SSE event: the chat
+ * renders the decision card inline and holds the composer until the user
+ * makes the explicit choice (no silent bypass); the decision then shows as a
+ * quiet status line and the conversation continues.
  */
 "use client";
 
@@ -22,6 +25,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { capture, initPostHog } from "@/lib/analytics/client";
+import { SafetyDecisionCard } from "./safety-decision-card";
+import {
+  decisionTurn,
+  type SafetyFlagPayload,
+} from "@/lib/ai/safety-flags";
 import type { TranscriptTurn } from "@/lib/ai/transcript";
 
 interface IntakeChatProps {
@@ -45,6 +53,18 @@ interface IntakeChatProps {
    * completion handoff as its terminal state.
    */
   onIntakeComplete?: (summary: SummaryShape | null) => void;
+  /**
+   * A server-derived undecided safety flag (resume mid-decision): the page
+   * reload path re-renders the decision card from the draft, and the composer
+   * holds until the user decides. Null/absent when nothing is pending.
+   */
+  initialPendingFlag?: SafetyFlagPayload | null;
+  /**
+   * Persist a safety decision (the decide-safety server action). Resolves
+   * true on success. Absent in fixtureMode, where deciding flips local state
+   * only — both harness buttons stay interactive with zero API/DB.
+   */
+  onDecideSafety?: (userOverrode: boolean) => Promise<boolean>;
 }
 
 type Turn = TranscriptTurn;
@@ -78,11 +98,16 @@ export function IntakeChat({
   initiallyCompleted,
   fixtureMode = false,
   onIntakeComplete,
+  initialPendingFlag = null,
+  onDecideSafety,
 }: IntakeChatProps) {
   const [turns, setTurns] = useState<Turn[]>(initialTranscript);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [completed, setCompleted] = useState(initiallyCompleted);
+  const [pendingFlag, setPendingFlag] = useState<SafetyFlagPayload | null>(
+    initialPendingFlag,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const startedRef = useRef(initialTranscript.length > 0);
@@ -96,7 +121,7 @@ export function IntakeChat({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [turns, streaming]);
+  }, [turns, streaming, pendingFlag]);
 
   // Best-effort drop-off: if the user leaves mid-intake (started, not done).
   useEffect(() => {
@@ -113,9 +138,25 @@ export function IntakeChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The explicit safety decision: persist (or, in fixture mode, flip local
+  // state), then convey the decision into the visible conversation as the
+  // same status turn the server appends — and release the composer.
+  const decide = useCallback(
+    async (userOverrode: boolean): Promise<boolean> => {
+      if (!pendingFlag) return false;
+      const ok = onDecideSafety ? await onDecideSafety(userOverrode) : true;
+      if (ok) {
+        setTurns((prev) => [...prev, decisionTurn(pendingFlag, userOverrode)]);
+        setPendingFlag(null);
+      }
+      return ok;
+    },
+    [pendingFlag, onDecideSafety],
+  );
+
   const send = useCallback(async () => {
     const message = input.trim();
-    if (!message || streaming || completed) return;
+    if (!message || streaming || completed || pendingFlag) return;
 
     if (!startedRef.current) {
       startedRef.current = true;
@@ -164,6 +205,7 @@ export function IntakeChat({
       await consumeSse(res.body, {
         onDelta: (text) =>
           setTurns((prev) => appendToLastAssistant(prev, text)),
+        onSafetyFlag: (flag) => setPendingFlag(flag),
         onComplete: (summary) => {
           completedRef.current = true;
           setCompleted(true);
@@ -195,6 +237,7 @@ export function IntakeChat({
     input,
     streaming,
     completed,
+    pendingFlag,
     goalDraftId,
     seed,
     initialTranscript,
@@ -222,8 +265,21 @@ export function IntakeChat({
           </p>
         )}
         {turns.map((turn, i) => (
-          <Message key={i} role={turn.role} content={turn.content} />
+          <Message
+            key={i}
+            role={turn.role}
+            content={turn.content}
+            kind={turn.kind}
+          />
         ))}
+        {pendingFlag && !completed && (
+          <SafetyDecisionCard
+            concern={pendingFlag.concern}
+            alternative={pendingFlag.alternative}
+            reasoning={pendingFlag.reasoning}
+            onDecide={decide}
+          />
+        )}
         {completed && !onIntakeComplete && (
           <div className="rounded-xl border border-border bg-card p-4">
             <p className="text-base leading-relaxed text-foreground">
@@ -247,41 +303,74 @@ export function IntakeChat({
       )}
 
       {!completed && (
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send();
-          }}
-        >
-          <label htmlFor="intake-input" className="sr-only">
-            Your reply
-          </label>
-          <textarea
-            id="intake-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            disabled={streaming}
-            rows={2}
-            placeholder="Write your reply"
-            className="min-h-11 w-full resize-none rounded-lg border border-input bg-transparent px-3 py-2.5 text-base leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
-          />
-          <Button
-            type="submit"
-            size="lg"
-            disabled={streaming || input.trim().length === 0}
-            className="h-11 min-h-11 px-5"
+        <div className="flex flex-col gap-2">
+          {/* The composer-hold guidance lives here, not in the dimmed disabled
+              placeholder — it must stay AA-readable while the hold is the one
+              thing explaining why the composer is locked. */}
+          {pendingFlag && (
+            <p
+              id="intake-hold-note"
+              className="text-sm leading-relaxed text-muted-foreground"
+            >
+              Choose a direction above to continue.
+            </p>
+          )}
+          <form
+            className="flex items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send();
+            }}
           >
-            {streaming ? "Sending" : "Send"}
-          </Button>
-        </form>
+            <label htmlFor="intake-input" className="sr-only">
+              Your reply
+            </label>
+            <textarea
+              id="intake-input"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              disabled={streaming || pendingFlag !== null}
+              rows={2}
+              placeholder="Write your reply"
+              aria-describedby={pendingFlag ? "intake-hold-note" : undefined}
+              className="min-h-11 w-full resize-none rounded-lg border border-input bg-transparent px-3 py-2.5 text-base leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+            />
+            <Button
+              type="submit"
+              size="lg"
+              disabled={
+                streaming || pendingFlag !== null || input.trim().length === 0
+              }
+              className="h-11 min-h-11 px-5"
+            >
+              {streaming ? "Sending" : "Send"}
+            </Button>
+          </form>
+        </div>
       )}
     </div>
   );
 }
 
-function Message({ role, content }: { role: Turn["role"]; content: string }) {
+function Message({
+  role,
+  content,
+  kind,
+}: {
+  role: Turn["role"];
+  content: string;
+  kind?: Turn["kind"];
+}) {
+  // A safety decision conveyed back into the conversation: a quiet status
+  // line, not a bubble — it was a button choice, not a typed message.
+  if (kind === "decision") {
+    return (
+      <p className="border-l-2 border-border pl-3 text-sm leading-relaxed text-muted-foreground">
+        {content}
+      </p>
+    );
+  }
   const isUser = role === "user";
   return (
     <div
@@ -320,7 +409,9 @@ function appendToLastAssistant(turns: Turn[], text: string): Turn[] {
 }
 
 function countUserTurns(turns: Turn[]): number {
-  return turns.filter((t) => t.role === "user").length;
+  // Decision status turns are button choices, not conversational turns —
+  // matches the server-side cap counting in transcript.ts.
+  return turns.filter((t) => t.role === "user" && t.kind !== "decision").length;
 }
 
 function structuredFieldCount(summary: SummaryShape | null): number {
@@ -339,6 +430,7 @@ async function consumeSse(
   body: ReadableStream<Uint8Array>,
   handlers: {
     onDelta: (text: string) => void;
+    onSafetyFlag: (flag: SafetyFlagPayload) => void;
     onComplete: (summary: SummaryShape | null) => void;
     onError: (message: string) => void;
   },
@@ -364,6 +456,18 @@ async function consumeSse(
             handlers.onDelta(event.data.text);
           }
           break;
+        case "safety_flag": {
+          const flag = event.data?.flag as SafetyFlagPayload | undefined;
+          if (
+            flag &&
+            typeof flag.concern === "string" &&
+            typeof flag.alternative === "string" &&
+            typeof flag.reasoning === "string"
+          ) {
+            handlers.onSafetyFlag(flag);
+          }
+          break;
+        }
         case "complete":
           handlers.onComplete(
             (event.data?.summary as SummaryShape | null) ?? null,

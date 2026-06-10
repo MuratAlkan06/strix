@@ -12,6 +12,14 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 export interface TranscriptTurn {
   role: "user" | "assistant";
   content: string;
+  /**
+   * "decision": a safety-card decision conveyed back into the conversation as
+   * a user-role message (Slice 5 safety-override flow). The model reads it
+   * like any user turn (toMessageParams keeps it), but it is excluded from
+   * the user-turn cap — it is a button click, not a conversational turn —
+   * and the chat renders it as a quiet status line, not a bubble.
+   */
+  kind?: "decision";
 }
 
 /** HARD CAP on user turns (phase-1 doc / prompts/intake.ts). */
@@ -39,9 +47,12 @@ export function appendTurn(
   return [...transcript, turn];
 }
 
-/** Count user turns in a transcript. */
+/** Count user turns in a transcript. Decision turns (safety-card choices
+ *  conveyed as user-role messages) are not conversational turns and do not
+ *  count toward the cap. */
 export function countUserTurns(transcript: TranscriptTurn[]): number {
-  return transcript.filter((t) => t.role === "user").length;
+  return transcript.filter((t) => t.role === "user" && t.kind !== "decision")
+    .length;
 }
 
 /**

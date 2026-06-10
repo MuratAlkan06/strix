@@ -7,7 +7,10 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  flagSafetySchema,
   submitIntakeSchema,
+  FLAG_SAFETY_TOOL,
+  FLAG_SAFETY_TOOL_NAME,
   SUBMIT_INTAKE_TOOL,
   SUBMIT_INTAKE_TOOL_NAME,
   type SubmitIntakeInput,
@@ -74,6 +77,55 @@ describe("submitIntakeSchema", () => {
       ],
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("flagSafetySchema", () => {
+  const validFlag = {
+    concern: "the 20-pound target in two weeks",
+    alternative: "4-6 lbs in 2 weeks plus a continuing habit",
+    reasoning: "Most of it would be water weight, and the rebound is rough.",
+  };
+
+  it("accepts a complete flag", () => {
+    expect(flagSafetySchema.safeParse(validFlag).success).toBe(true);
+  });
+
+  it("rejects a flag missing reasoning", () => {
+    const { reasoning: _omit, ...withoutReasoning } = validFlag;
+    void _omit;
+    expect(flagSafetySchema.safeParse(withoutReasoning).success).toBe(false);
+  });
+
+  it("rejects empty strings (a card needs all three lines)", () => {
+    expect(
+      flagSafetySchema.safeParse({ ...validFlag, concern: "" }).success,
+    ).toBe(false);
+    expect(
+      flagSafetySchema.safeParse({ ...validFlag, alternative: "" }).success,
+    ).toBe(false);
+  });
+
+  it("does not carry decision fields — the product, not the model, decides", () => {
+    expect(Object.keys(flagSafetySchema.shape)).toEqual([
+      "concern",
+      "alternative",
+      "reasoning",
+    ]);
+  });
+});
+
+describe("FLAG_SAFETY_TOOL", () => {
+  it("is named flag_safety and is an object schema", () => {
+    expect(FLAG_SAFETY_TOOL.name).toBe(FLAG_SAFETY_TOOL_NAME);
+    expect(FLAG_SAFETY_TOOL.input_schema.type).toBe("object");
+  });
+
+  it("requires concern + alternative + reasoning in the JSON schema", () => {
+    const required = FLAG_SAFETY_TOOL.input_schema.required ?? [];
+    expect(required).toContain("concern");
+    expect(required).toContain("alternative");
+    expect(required).toContain("reasoning");
   });
 });
 
