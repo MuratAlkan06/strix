@@ -13,7 +13,7 @@
 ### Scaffold
 
 - `pnpm create next-app` — Next.js 15 App Router, TypeScript, Tailwind, `src/` directory, ESLint, Turbopack dev.
-- Tailwind config: extend palette with 5 `--goal-color-N` CSS variables; **valid earth-tone placeholder values (not literal `...`)** so Phase 1's dashboard renders real colors. Final palette set during Phase 5 design pass.
+- Tailwind config: extend palette with 5 `--goal-color-N` CSS variables; **valid earth-tone placeholder values (not literal `...`)** so Phase 1's dashboard renders real colors. Final palette set during Phase 5 design pass. [Superseded 2026-06-10: goal colors now minted as DAWN dark-ramp OKLCH values in globals.css — see docs/DESIGN.md §5.]
 - shadcn/ui init: install Button, Card, Dialog, Input, Label, Select, Switch, Sonner (shadcn's toast successor — the `toast` component is deprecated in the registry), Tooltip, Sheet to start.
 - TypeScript strict mode on. Path aliases: `@/app`, `@/lib`, `@/components`, `@/db`.
 
@@ -127,6 +127,7 @@ RLS adds debugging friction (RLS errors show up as empty result sets, not loud e
 ```css
 :root {
   --goal-color-0: #8a6a4f;  /* placeholder earth tones; finalized Phase 5 */
+  /* [Superseded 2026-06-10: goal colors now minted as DAWN dark-ramp OKLCH values in globals.css — see docs/DESIGN.md §5.] */
   --goal-color-1: #4a5d4a;
   --goal-color-2: #3a4e5f;
   --goal-color-3: #6b4a3a;

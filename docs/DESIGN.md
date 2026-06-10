@@ -167,6 +167,8 @@ Bound to a **state class** on the SVG root. Values are the dusk-base reference; 
 | **dusk** | evening / settings ambient | 0.20 0.04 285 → 0.30 0.06 340 → 0.48 0.10 30 | low, sinking, warm |
 | **sunrise** | goal completion (the payoff) | animate FROM dawn TO 0.30 0.06 300 → 0.55 0.12 60 → 0.86 0.10 85 | disc rises + halo widens; gradient brightens |
 
+> **Dawn-recipe reconciliation (§2 vs. §4.3):** where the dawn row above differs from the §2 V1 horizon recipe, the **§2 V1 horizon recipe is the IMPLEMENTED canonical** (globals.css `.scene-dawn` matches §2); the §4.3 dawn row is the pre-curation generic reference.
+
 **Completion = sunrise (the locked, confetti-free moment).** The goal's scene animates dawn→sunrise over **900ms ease-out** (sun `cy` lifts ~14% of the viewBox via `transform: translateY` on the GPU; sky stops crossfade), then "Well done." fades in (200ms, +60ms after the brighten settles). **No** confetti / burst / sound. `prefers-reduced-motion`: skip the rise — **250ms sky crossfade** + the line.
 
 ### 4.4 The five example-goal scene tiles
@@ -298,7 +300,7 @@ The injected design-system DB contributes **only** this checklist (its visual va
 - **Contrast:** body text ≥ **4.5:1**; large text and non-text UI glyphs ≥ **3:1**. Verified at **both ends** of any gradient a text/emblem overlaps, in **both modes**, by the `verify:ui` axe-core harness — the prose numbers in this doc are DRAFT and not trusted.
 - **Focus:** visible focus rings, **2–4px**, brand-tied (the `ring` token = the accent).
 - **Pointer:** `cursor-pointer` on all clickables; hover transitions 150–300ms.
-- **Touch targets:** ≥ **44×44px**. **Product-graduation requirement (from curation review):** the `/playground/dashboard` components were sized for dense side-by-side curation — the **checkbox renders ~16px and the "Adjust" button ~28px** there. When these graduate to real product surfaces, their **interactive targets must be brought to ≥44×44px** (expand the hit area — padding / an enlarged label-wrap — without necessarily enlarging the visual glyph). Recorded so the playground sizes are not copied verbatim into product.
+- **Touch targets:** ≥ **44×44px**. **Product-graduation requirement (from curation review):** the `/playground/dashboard` components were sized for dense side-by-side curation — the **checkbox renders ~16px and the "Adjust" button ~28px** there. When these graduate to real product surfaces, their **interactive targets must be brought to ≥44×44px** (expand the hit area — padding / an enlarged label-wrap — without necessarily enlarging the visual glyph). Recorded so the playground sizes are not copied verbatim into product. **Product-graduation requirement:** shared button primitive lacks `cursor-pointer` (base-nova default); add it when primitives graduate to product surfaces (§11 "cursor-pointer on all clickables").
 - **Icons:** lucide SVG, **never emoji**.
 - **Motion:** `prefers-reduced-motion` respected everywhere (§7 map).
 - **No CLS:** reserved heights for scenes and rows.
