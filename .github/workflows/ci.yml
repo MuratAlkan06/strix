@@ -1,0 +1,25 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The phase gate: typecheck, lint, four-layer access-isolation check,
+      # migration generation, unit + integration tests, production build.
+      # verify-phase falls back to placeholder env values for db:generate and
+      # build, so this runs with zero repository secrets. Live-DB checks
+      # (smoke:scoped-db, verify:db-schema) stay local — they need a real
+      # Neon branch.
+      - run: pnpm verify:phase-0
