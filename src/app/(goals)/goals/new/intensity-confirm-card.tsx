@@ -170,9 +170,10 @@ export function IntensityConfirmCard({
 }
 
 /**
- * The calm interim state after a confirmed pick. Plan generation is a later
- * slice — this is a quiet "it's coming" line, never a dead button or a faked
- * call.
+ * The calm post-confirm state the card renders internally. In the live flow
+ * the parent (IntakeFlow) advances to the plan-generation surface on a
+ * successful confirm, so this only ever shows in the design-review harness —
+ * a quiet line, never a dead button or a faked call.
  */
 export function IntensityInterim() {
   return (

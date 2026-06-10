@@ -71,6 +71,7 @@ export default async function GoalIntakePage({ searchParams }: PageProps) {
         initialSurface={surface}
         initialSummary={draft.summary}
         initialPendingFlag={draft.pendingSafetyFlag}
+        initialPlanReady={draft.planReady}
       />
     </main>
   );

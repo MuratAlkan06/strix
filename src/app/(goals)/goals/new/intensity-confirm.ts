@@ -120,8 +120,8 @@ export function asIntakeSummaryDraft(value: unknown): IntakeSummaryDraft | null 
  * The three surfaces /goals/new can render, derived from the draft's shape:
  *   - "chat":    intake in progress (no usable intake summary draft yet).
  *   - "confirm": intake complete, intensity not yet confirmed → the card.
- *   - "interim": intensity confirmed → calm "plan is coming" state (Slice 6
- *                wires the actual generation; nothing dead is shown here).
+ *   - "interim": intensity confirmed → plan generation (PlanGeneration
+ *                auto-kicks /api/ai/plan; plan_draft present resumes ready).
  */
 export type DraftSurface = "chat" | "confirm" | "interim";
 

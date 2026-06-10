@@ -10,20 +10,21 @@
  *              switches to the card (replacing Slice 3's inline handoff).
  *   - confirm: renders IntensityConfirmCard, binding the confirmIntensity
  *              server action to its onConfirm. An explicit Continue is required.
- *   - interim: the calm post-confirm state (plan generation is a later slice).
+ *   - interim: plan generation (Slice 6) — PlanGeneration auto-kicks
+ *              POST /api/ai/plan and renders generating / ready / error.
  *
  * The card stays prop-driven (suggestion + reasoning + onConfirm) so the
  * design-review harness can render it deterministically with no server action.
+ * A successful confirm advances the surface here (interim → generation kick);
+ * the card's internal post-confirm interim only ever shows in the harness.
  */
 "use client";
 
 import { useState } from "react";
 
 import { IntakeChat } from "./intake-chat";
-import {
-  IntensityConfirmCard,
-  IntensityInterim,
-} from "./intensity-confirm-card";
+import { IntensityConfirmCard } from "./intensity-confirm-card";
+import { PlanGeneration } from "./plan-generation";
 import { confirmIntensity } from "./confirm-intensity";
 import { decideSafety } from "./decide-safety";
 import {
@@ -46,6 +47,8 @@ interface IntakeFlowProps {
   initialSummary: IntakeSummaryDraft | null;
   /** Server-derived undecided safety flag (resume mid-decision), or null. */
   initialPendingFlag: SafetyFlagPayload | null;
+  /** True when plan_draft already exists — interim resumes at "ready". */
+  initialPlanReady: boolean;
 }
 
 export function IntakeFlow({
@@ -55,6 +58,7 @@ export function IntakeFlow({
   initialSurface,
   initialSummary,
   initialPendingFlag,
+  initialPlanReady,
 }: IntakeFlowProps) {
   const [surface, setSurface] = useState<Surface>(initialSurface);
   const [summary, setSummary] = useState<IntakeSummaryDraft | null>(
@@ -62,7 +66,13 @@ export function IntakeFlow({
   );
 
   if (surface === "interim") {
-    return <IntensityInterim />;
+    // A surface reached by a fresh confirm has no plan yet (generation kicks
+    // off); a server-resumed one starts at "ready" when plan_draft exists.
+    return (
+      <PlanGeneration
+        initialState={initialPlanReady ? "ready" : "generating"}
+      />
+    );
   }
 
   if (surface === "confirm" && summary) {
@@ -73,6 +83,12 @@ export function IntakeFlow({
         goalContext={summary.one_sentence_goal}
         onConfirm={async (intensity: Intensity) => {
           const result = await confirmIntensity(intensity);
+          if (result.ok) {
+            // Advance to the interim surface here so the live flow proceeds
+            // straight into plan generation (the card's own confirmed state
+            // remains the harness's terminal rendering).
+            setSurface("interim");
+          }
           return result.ok;
         }}
       />

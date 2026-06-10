@@ -8,10 +8,14 @@
  * action, no DB, no model call), so the card's full interaction is reachable
  * without auth.
  *
- * Two states, selected by ?state=:
- *   default        — suggestion = comfortable, pre-selected with its reasoning.
- *   ?state=changed — the same suggestion with a non-suggested pick (brutal)
- *                    selected, showing the "changed pick" affordance.
+ * States, selected by ?state=:
+ *   default           — suggestion = comfortable, pre-selected with reasoning.
+ *   ?state=changed    — the same suggestion with a non-suggested pick (brutal)
+ *                       selected, showing the "changed pick" affordance.
+ *   ?state=generating — the Slice 6 plan-generation states, rendered by the
+ *   ?state=plan-ready   SAME <PlanGeneration /> the live interim surface uses,
+ *   ?state=plan-error   in fixtureMode (zero network; retry flips the visual
+ *                       back to generating locally).
  *
  * The /playground(.*) Clerk matcher (src/proxy.ts) makes it reachable without
  * auth; the segment layout (src/app/playground/layout.tsx) noindexes it. The
@@ -20,6 +24,10 @@
  * Fixture copy is Patagonia register: declarative, plain, no exclamation.
  */
 import type { Intensity } from "../../(goals)/goals/new/intensity-confirm";
+import {
+  PlanGeneration,
+  type PlanGenerationState,
+} from "../../(goals)/goals/new/plan-generation";
 import { IntensityConfirmHarness } from "./harness";
 
 const SUGGESTED: Intensity = "comfortable";
@@ -35,9 +43,14 @@ export default async function PlaygroundIntensityConfirmPage({
   searchParams,
 }: PageProps) {
   const { state } = await searchParams;
-  const changed = Array.isArray(state)
-    ? state.includes("changed")
-    : state === "changed";
+  const selected = Array.isArray(state) ? state[0] : state;
+  const changed = selected === "changed";
+  const planStates: Record<string, PlanGenerationState> = {
+    generating: "generating",
+    "plan-ready": "ready",
+    "plan-error": "error",
+  };
+  const planState = selected ? planStates[selected] : undefined;
 
   return (
     <main className="mx-auto flex h-[calc(100dvh-1px)] w-full max-w-2xl flex-col gap-4 p-4 sm:p-6">
@@ -50,12 +63,16 @@ export default async function PlaygroundIntensityConfirmPage({
         </p>
       </header>
 
-      <IntensityConfirmHarness
-        suggestedIntensity={SUGGESTED}
-        reasoning={REASONING}
-        goalContext={GOAL_CONTEXT}
-        initialIntensity={changed ? "brutal" : undefined}
-      />
+      {planState ? (
+        <PlanGeneration initialState={planState} fixtureMode />
+      ) : (
+        <IntensityConfirmHarness
+          suggestedIntensity={SUGGESTED}
+          reasoning={REASONING}
+          goalContext={GOAL_CONTEXT}
+          initialIntensity={changed ? "brutal" : undefined}
+        />
+      )}
     </main>
   );
 }

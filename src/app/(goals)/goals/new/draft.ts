@@ -53,6 +53,12 @@ export interface ResolvedDraft {
    * surface routing).
    */
   pendingSafetyFlag: SafetyFlagPayload | null;
+  /**
+   * True when goal_drafts.plan_draft is populated — the interim surface then
+   * resumes at "Your plan is ready." instead of re-kicking generation
+   * (server-derived, resumable like the rest of the draft state).
+   */
+  planReady: boolean;
 }
 
 /**
@@ -85,6 +91,7 @@ export async function resolveDraft(
         completed: existing.intake_summary_draft != null,
         summary: asIntakeSummaryDraft(existing.intake_summary_draft),
         pendingSafetyFlag: pending ? toFlagPayload(pending) : null,
+        planReady: existing.plan_draft != null,
       };
     }
     // Cookie present but no matching row (expired/swept) — fall through to
@@ -115,5 +122,6 @@ export async function resolveDraft(
     completed: false,
     summary: null,
     pendingSafetyFlag: null,
+    planReady: false,
   };
 }
