@@ -23,3 +23,35 @@ jobs:
       # (smoke:scoped-db, verify:db-schema) stay local — they need a real
       # Neon branch.
       - run: pnpm verify:phase-0
+
+  # verify:ui — the DAWN UI gate (separate job so the fast phase-0 gate is not
+  # slowed by a browser download + production build). Runs axe-core (WCAG 2.1 AA,
+  # zero violations) on /playground/dashboard ALWAYS, and compares Linux
+  # screenshot baselines (committed under e2e/**-snapshots/, generated in this
+  # same Playwright image so they match this runner). Placeholder env mirrors
+  # verify-phase so build + `next start` boot with zero repository secrets.
+  verify-ui:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      CLERK_SECRET_KEY: sk_test_placeholder
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Browsers + OS deps must match the Playwright version in package.json.
+      - run: pnpm exec playwright install --with-deps chromium
+      # Build once here; the Playwright webServer (CI mode) only runs `pnpm start`.
+      - run: pnpm build
+      - run: pnpm verify:ui
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
