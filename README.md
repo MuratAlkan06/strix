@@ -90,6 +90,8 @@ pnpm ci:check-unscoped
 | `pnpm ci:check-unscoped` | Four-layer access-isolation check (unscopedDb imports, raw-client imports, scopedDb call shape — default-deny, raw driver imports) |
 | `pnpm ci:check-doc-parity` | Deterministic doc↔code parity (layer-count phrase, allowlist quotes, enum lists in PLAN.md/verify-schema, README layout-tree paths). Invariants are admitted only after a real drift burned us — see the script header. |
 | `pnpm verify:phase-0` | Run the full Phase 0 verification matrix |
+| `pnpm verify:ui` | UI gate: Playwright + axe-core (WCAG 2.1 AA, zero violations) on `/playground/dashboard` + screenshot baselines. Production server, reduced motion. First run on a new machine: `pnpm exec playwright install chromium`. |
+| `pnpm verify:ui:update` | Regenerate screenshot baselines for the current platform (run after an intentional visual change). |
 | `pnpm verify:db-schema` | Live-DB introspection: assert tables, enums, FKs, partial indexes match PLAN.md §2 (requires `DATABASE_URL`) |
 | `pnpm smoke:scoped-db` | Live-DB cross-user / soft-delete / forged-insert smoke test for `scopedDb` (requires `DATABASE_URL`). Self-cleaning. Re-run any time scopedDb changes. |
 
@@ -108,6 +110,14 @@ GitHub Actions runs the same matrix on every push to `master` and every PR
 back to placeholder env values for `db:generate` and `build`. The live-DB
 checks (`smoke:scoped-db`, `verify:db-schema`) stay local since they need a
 real Neon branch.
+
+**Pre-push (UI):** there is no git hook — run **`pnpm verify:ui`** before pushing
+UI changes. CI runs it as a separate `verify-ui` job (axe always; screenshot
+comparison against committed Linux baselines). Screenshot baselines are
+**per-platform** (`…-chromium-linux.png` for CI, `…-chromium-darwin.png` for
+local macOS) so cross-OS font antialiasing never causes false diffs; after an
+intentional visual change, refresh both — your platform with `pnpm verify:ui:update`,
+and the Linux baseline in the matching Playwright Docker image (see DESIGN.md §11).
 
 ## Session handoff (context-packager habit)
 

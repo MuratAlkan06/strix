@@ -39,10 +39,13 @@ Serious / documentary — the territory of Patagonia, Arc'teryx, and Uphill Athl
 
 Concrete implications the planning agent and any future design work should honor:
 
-- **Photography and visual language:** real effort in real conditions. Alpine ridges, runners in winter rain, climbers at dusk, novelists at a 5am desk. Not finish lines, not flexes, not stock motivation.
+- **Photography and visual language:** real effort in real conditions. Alpine ridges, runners in winter rain, climbers at dusk, novelists at a 5am desk. Not finish lines, not flexes, not stock motivation. (This guidance governs **marketing** photography; the product UI itself is illustration-led — see below.)
 - **Copy voice:** declarative, plain, low on exclamation. "18 days to Mont Buet. Order crampons by Friday." Not "Crush it!"
-- **Color and typography:** earth tones, deep blues, off-whites; typography with weight and restraint. Not neons, not sport-script. Specific palette and type choices left to the design phase.
+- **Color and typography:** a dawn-atmospheric palette — deep indigo/dusk grounds and pale dawn neutrals with warm sun accents (amber/coral family); a soft-modern serif display paired with a humanist grotesk body (Fraunces + Hanken Grotesk), with weight and restraint. Not neons, not sport-script. Specific tokens live in docs/DESIGN.md.
+- **Product visual identity is illustration-led:** the in-product surface is built from bespoke atmospheric SVG scenes (gradient dawn/dusk skies, terrain silhouettes) plus a minimal geometric owl emblem. No mascots; no photography inside the product (the photography guidance above is marketing-territory direction).
 - **Tone in the AI flows:** the intake and replan flows speak in this register too. Coaching, not cheerleading.
+
+*Amended 2026-06-10: the palette/typography direction is superseded by the DAWN visual system — see docs/DESIGN.md and docs/DECISIONS.md. The brand register, voice, marketing-photography guidance, and audience framing above are unchanged.*
 
 ## 5. Conceptual model
 

@@ -14,7 +14,7 @@
   - `name: "Strix"`, `short_name: "Strix"`.
   - `display: "standalone"`.
   - `start_url: "/"` (or `"/dashboard"` after auth).
-  - `theme_color` and `background_color` from the earth-tone palette.
+  - `theme_color` and `background_color` from the DAWN palette (V1 Dusk tokens in src/app/globals.css — background oklch(0.18 0.035 264) family; see docs/DESIGN.md §2).
   - Icons: 192, 512, maskable variants. Real icons; no placeholders into this phase's verification.
   - `orientation: "portrait"`.
 - `<link rel="manifest">` in the root layout. iOS-specific tags: `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style="black-translucent"`, `apple-touch-icon` for each size.
