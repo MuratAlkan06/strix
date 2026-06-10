@@ -237,6 +237,12 @@ Five hues in the dawn palette — muted, distinguishable. **Never the sole meani
 
 This is implemented CSS-first (`tw-animate-css`); the `motion` package is reserved **only** for the sunrise completion (`LazyMotion` + `domAnimation` via `motion/react-m`, `<MotionConfig reducedMotion="user">` at the root).
 
+**Implemented (motion slice).**
+- **Provider:** [`../src/components/motion-provider.tsx`](../src/components/motion-provider.tsx) wraps the root layout's children with `LazyMotion features={domAnimation} strict` + `<MotionConfig reducedMotion="user">`. The root layout stays a server component (the provider is the client boundary). `strict` makes app code import `m.*` from `motion/react-m`; a plain `motion.*` component throws — preserving the code-split so non-completion surfaces ship no Motion runtime.
+- **Sunrise mechanism:** [`../src/components/completion-scene.tsx`](../src/components/completion-scene.tsx) (a dedicated client component — the static `<Scene>` primitive is left untouched so the dashboard screenshots don't move). The sky brighten is an **opacity crossfade of two stacked gradient layers** (a static dawn `<Scene>` underneath + a `.scene-sunrise` `m.div` fading 0→1), **not** `@property` registration of the `--scene-*` custom props (they don't interpolate in a transition otherwise). The sun **rises via `translateY` ~14%** of the viewBox (transform/opacity only) and is occluded by a terrain copy that fades in on top, so it lifts from behind the near ridge; "Well done." (Fraunces) fades in 200ms, +60ms after the sky settles. **Reduced motion:** the rise distance is zeroed and the crossfade shortens to 250ms (and `MotionConfig` independently drops transforms while keeping opacity), so the line still appears — matching §4.3.
+- **Demo route:** [`../src/app/playground/completion/page.tsx`](../src/app/playground/completion/page.tsx) — a throwaway, auth-exempt (`/playground(.*)`) surface that plays the moment on a mountain scene (Mark complete / Reset). Deliberately a **separate** route from `/playground/dashboard` so that surface's `verify:ui` baselines stay byte-identical.
+- **Micro-motion (§7):** the shared `button` / `checkbox` primitives already carry `transition-*` (≤300ms, ease) and an `:active` affordance from base-nova, so they conform without edits; the shared primitives were not modified (a global active-scale change is out of this slice's scope and would risk the dashboard baselines).
+
 ---
 
 ## 8. State philosophy (dashboard surface, DAWN register)
