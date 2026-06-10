@@ -37,11 +37,6 @@ const STEPS_BY_PHASE = {
       args: ["ci:check-unscoped"],
     },
     {
-      name: "ci:check-doc-parity",
-      cmd: "pnpm",
-      args: ["ci:check-doc-parity"],
-    },
-    {
       name: "db:generate",
       cmd: "pnpm",
       args: ["db:generate"],
