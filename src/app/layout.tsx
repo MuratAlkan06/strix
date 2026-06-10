@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Hanken_Grotesk, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { MotionProvider } from "@/components/motion-provider";
 import "./globals.css";
 
 // DAWN brand faces, loaded app-wide (DESIGN.md §3). Fraunces = display/headings,
@@ -54,7 +55,12 @@ export default function RootLayout({
       className={`${fraunces.variable} ${hanken.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <ClerkProvider>{children}</ClerkProvider>
+        {/* MotionProvider sets up LazyMotion(domAnimation, strict) + MotionConfig
+            reducedMotion="user" once at the root (DESIGN.md §7); it is a client
+            component so the root layout stays a server component. */}
+        <ClerkProvider>
+          <MotionProvider>{children}</MotionProvider>
+        </ClerkProvider>
       </body>
     </html>
   );
