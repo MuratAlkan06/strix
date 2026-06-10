@@ -259,7 +259,8 @@ export const goal_drafts = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     // ~32 bytes base64url opaque token. Mapped to an HttpOnly cookie.
     session_token: text("session_token").notNull(),
-    // Whitelisted slug for empty-state tile (e.g. "mountain", "language").
+    // Whitelisted slug for empty-state tile (e.g. "climb", "language").
+    // Server-side whitelist: {climb, language, race, book, instrument}.
     seed: text("seed"),
     raw_transcript: jsonb("raw_transcript").notNull().default(sql`'[]'::jsonb`),
     intake_summary_draft: jsonb("intake_summary_draft"),

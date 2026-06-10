@@ -154,7 +154,9 @@ src/
 │   └── migrate.ts                   # prod migration runner
 ├── lib/
 │   ├── analytics/{server,client}.ts # PostHog wrappers
-│   ├── inngest/client.ts            # Inngest client
+│   ├── inngest/
+│   │   ├── client.ts                # Inngest client
+│   │   └── sweep-expired-goal-drafts.ts # daily cron: prune expired goal_drafts
 │   └── utils.ts                     # shadcn cn() helper
 └── proxy.ts                         # clerkMiddleware + public-route whitelist
                                      # (Next 16 renamed middleware.ts → proxy.ts)
