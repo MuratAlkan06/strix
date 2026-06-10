@@ -16,6 +16,24 @@
  */
 
 /* ===================================================================== */
+/* Brand faces — applied DIRECTLY, bypassing the @theme-baked font        */
+/* utilities. globals.css declares --font-sans / --font-heading in an     */
+/* `@theme inline` block, so `.font-sans` / `.font-heading` emit          */
+/* `font-family: var(--font-geist-sans)` baked in (the value, not a       */
+/* reference to --font-sans) and ignore any wrapper-level token override. */
+/* So we set font-family here off the next/font variables that layout.tsx */
+/* exposes: body → Hanken Grotesk on the wrapper; display → Fraunces on    */
+/* the elements that carry `.font-heading`. Permanent fix at token mint    */
+/* switches the font tokens to genuine runtime indirection (plan Rev 6.3). */
+/* ===================================================================== */
+.pg-root {
+  font-family: var(--font-hanken), system-ui, sans-serif;
+}
+.pg-root :is(.font-heading) {
+  font-family: var(--font-fraunces), Georgia, serif;
+}
+
+/* ===================================================================== */
 /* V1 — Dusk (dark-primary, amber)                                       */
 /* ===================================================================== */
 .v1 {

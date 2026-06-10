@@ -4,17 +4,19 @@
  * Loads the brand faces (Fraunces display + Hanken Grotesk body) via
  * next/font/google INSIDE this segment — NOT app-wide. The root layout and
  * src/app/globals.css are untouched; brand-face rewiring of @theme happens at
- * mint time. Here we apply the fonts by:
- *   1. exposing them as CSS variables (--font-fraunces / --font-hanken), and
- *   2. re-pointing the Tailwind font tokens (--font-sans / --font-heading) at
- *      them on the wrapper, so `font-sans` / `font-heading` utilities — incl.
- *      the ones inside shadcn components — resolve to the DAWN faces within
- *      this subtree only.
+ * mint time.
+ *
+ * We expose the faces as CSS variables (--font-fraunces / --font-hanken) and
+ * tag the wrapper `.pg-root`. We do NOT re-point --font-sans / --font-heading:
+ * globals.css declares those in an `@theme inline` block, which bakes the
+ * utilities to `font-family: var(--font-geist-sans)` (the value, not a
+ * reference to --font-sans), so a wrapper-level --font-sans override is dead.
+ * Instead playground.css applies the faces DIRECTLY under .pg-root — see the
+ * font block there. The permanent fix lands at token mint (Rev 6.3).
  *
  * playground.css carries the .v1/.v2/.v3 token overrides + --scene-* recipes.
  */
 import type { ReactNode } from "react";
-import type { CSSProperties } from "react";
 import { Fraunces, Hanken_Grotesk } from "next/font/google";
 import "./playground.css";
 
@@ -35,22 +37,13 @@ const hanken = Hanken_Grotesk({
   weight: ["400", "500", "600"],
 });
 
-// Re-point the Tailwind font tokens at the DAWN faces for this subtree only.
-const fontVars = {
-  "--font-sans": "var(--font-hanken)",
-  "--font-heading": "var(--font-fraunces)",
-} as CSSProperties;
-
 export default function PlaygroundLayout({
   children,
 }: {
   children: ReactNode;
 }) {
   return (
-    <div
-      className={`${fraunces.variable} ${hanken.variable} font-sans`}
-      style={fontVars}
-    >
+    <div className={`pg-root ${fraunces.variable} ${hanken.variable}`}>
       {children}
     </div>
   );
