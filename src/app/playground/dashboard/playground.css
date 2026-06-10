@@ -66,7 +66,10 @@
   --card-foreground: oklch(0.24 0.04 262);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.24 0.04 262);
-  --primary: oklch(0.62 0.13 64);
+  /* primary darkened from 0.62→0.57 L: the V2 amber doubles as on-white WARNING
+     body text (Equipment "order by Fri") — 0.62 L cleared only 3.76:1, this
+     reaches ≥4.5:1. Recorded V2 contrast correction (DESIGN.md §2 V2 note). */
+  --primary: oklch(0.57 0.13 64);
   --primary-foreground: oklch(0.99 0.005 80);
   --secondary: oklch(0.95 0.012 250);
   --secondary-foreground: oklch(0.3 0.04 262);
@@ -77,10 +80,12 @@
   --destructive: oklch(0.55 0.17 28);
   --border: oklch(0.9 0.012 248);
   --input: oklch(0.9 0.012 248);
-  --ring: oklch(0.62 0.13 64);
+  --ring: oklch(0.57 0.13 64);
 
-  /* goal ramp — light (on pale-dawn) values */
-  --goal-color-0: oklch(0.7 0.12 65);
+  /* goal ramp — light (on pale-dawn) values.
+     goal-0 darkened from 0.70→0.65 L so the on-white dot clears the §5 3:1 floor
+     (0.70 L was 2.74:1). Recorded V2 contrast correction (DESIGN.md §2 V2 note). */
+  --goal-color-0: oklch(0.65 0.12 65);
   --goal-color-1: oklch(0.55 0.09 245);
   --goal-color-2: oklch(0.58 0.07 150);
   --goal-color-3: oklch(0.6 0.1 30);

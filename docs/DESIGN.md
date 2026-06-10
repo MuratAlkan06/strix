@@ -65,9 +65,9 @@ Values are **OKLCH** "L C H" and map to **exact shadcn slot names**. Global rule
 ### V2 — Pale Dawn (light-primary) — **RECORDED future light-mode recipe (not minted)**
 *Feel: 5am desk, cold clear morning — pale sky, ink-blue type, same amber sun as warm anchor. Calm, awake, premium-clean.*
 
-> **Reserved for the future light-mode slice.** When light mode is built, mint this under a light-mode mechanism (a `.light` / data-attr or `prefers-color-scheme`), not by re-minting `:root`. **Two contrast corrections from curation review must land at that mint** (the playground rendered the raw recipe; these were caught against white):
-> - **On-white warning amber must reach ≥4.5:1** (warning notes are body text — §8 "cap hit / overdue"). Darken the amber toward the primary-at-0.62 L pattern already used for `primary` below; the `0.78 L` dusk amber is text-legible only on the dark ground.
-> - **On-white goal-dot amber ≥3:1** (the §5 dot floor is 3:1 on its card). The light goal-0 (`0.70 0.12 65`) must be verified/darkened on white so the dot clears 3:1; pair it with its text as always (color is never sole signal).
+> **Reserved for the future light-mode slice.** When light mode is built, mint this under a light-mode mechanism (a `.light` / data-attr or `prefers-color-scheme`), not by re-minting `:root`. **Two contrast corrections from curation review are now folded into the values above** (the playground first rendered the raw recipe; axe caught these against white, and the corrected values are what the `/playground/dashboard` `.v2` override + this table now carry — this is a recipe correction, not a `:root` mint, so the freeze holds):
+> - **On-white warning amber reaches ≥4.5:1** (warning notes are body text — §8 "cap hit / overdue"; the same `primary` amber renders the Equipment "order by Fri" note). The earlier `0.62 L` only reached **3.76:1**; `primary` is now **`0.57 L`** (≈4.62:1 on white). The `0.78 L` dusk amber is text-legible only on the dark ground.
+> - **On-white goal-dot amber ≥3:1** (the §5 dot floor is 3:1 on its card). The earlier light goal-0 `0.70 0.12 65` was **2.74:1**; it is now **`0.65 0.12 65`** (≈3.33:1 on white), paired with its text as always (color is never sole signal).
 
 | slot | OKLCH | note |
 |---|---|---|
@@ -75,7 +75,7 @@ Values are **OKLCH** "L C H" and map to **exact shadcn slot names**. Global rule
 | foreground | 0.24 0.04 262 | deep ink-indigo (NOT neutral black) |
 | card | 1 0 0 | pure white lifts off cool bg |
 | card-foreground | 0.24 0.04 262 | |
-| primary | 0.62 0.13 64 | amber, darkened for 4.5:1 text-on-amber |
+| primary | 0.57 0.13 64 | amber, darkened to clear 4.5:1 as on-white warning **text** (verified by axe; 0.62 L only reached 3.76:1) |
 | primary-foreground | 0.99 0.005 80 | |
 | secondary | 0.95 0.012 250 | pale indigo wash |
 | secondary-foreground | 0.30 0.04 262 | |
@@ -84,7 +84,7 @@ Values are **OKLCH** "L C H" and map to **exact shadcn slot names**. Global rule
 | accent | 0.93 0.02 248 | |
 | accent-foreground | 0.28 0.04 262 | |
 | border | 0.90 0.012 248 | |
-| ring | 0.62 0.13 64 | |
+| ring | 0.57 0.13 64 | mirrors corrected `primary` |
 | destructive | 0.55 0.17 28 | muted brick-red |
 
 **Horizon gradient (V2):** top→bottom `oklch(0.93 0.03 255)` 0% → `oklch(0.90 0.055 40)` 55% → `oklch(0.95 0.04 75)` 100%, sun-glow radial `oklch(0.95 0.06 80)` @35% at ~75% / 82%. Pale, never washed-out; verify ≥3:1 against overlaid emblem/text.
@@ -196,7 +196,7 @@ Five hues in the dawn palette — muted, distinguishable. **Never the sole meani
 
 | idx | name | light (on pale-dawn) | dark (on dusk) |
 |---|---|---|---|
-| 0 | dawn amber | 0.70 0.12 65 | 0.78 0.12 70 |
+| 0 | dawn amber | 0.65 0.12 65 | 0.78 0.12 70 |
 | 1 | alpine blue | 0.55 0.09 245 | 0.70 0.09 240 |
 | 2 | lichen green | 0.58 0.07 150 | 0.72 0.07 150 |
 | 3 | clay rose | 0.60 0.10 30 | 0.72 0.10 28 |
