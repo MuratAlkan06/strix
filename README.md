@@ -57,10 +57,20 @@ const sdb = scopedDb(userId);
 const list = await sdb.selectFrom(goals);
 const total = await sdb.count(goals);
 await sdb.insert(goals, { user_id: userId, color_index: 0, title: "…" });
+
+// The user's own `users` row is reachable only via the self accessors:
+const me = await sdb.getSelf();
+await sdb.updateSelf({ timezone: "Europe/Istanbul" }); // profile fields only
 ```
 
+Inserts are single atomic `INSERT … SELECT` statements whose SELECT side
+proves ownership (and that the user isn't soft-deleted) — zero rows inserted
+means the proof failed and scopedDb throws.
+
 The escape hatch `unscopedDb` (in `@/db/unscoped`) is allowed only in
-`src/lib/inngest/**` and `src/app/api/webhooks/**`. CI enforces this:
+`src/lib/inngest/**`, `src/app/api/webhooks/**`, and
+`src/lib/auth/lifecycle.ts` (Phase 4's soft-delete + recovery module). CI
+enforces this:
 
 ```bash
 pnpm ci:check-unscoped
@@ -77,7 +87,7 @@ pnpm ci:check-unscoped
 | `pnpm test` | Vitest in watch mode |
 | `pnpm test:run` | Vitest, one-shot |
 | `pnpm db:*` | Drizzle commands (see above) |
-| `pnpm ci:check-unscoped` | Three-layer access-isolation check (unscopedDb imports, client imports, scopedDb call shape) |
+| `pnpm ci:check-unscoped` | Four-layer access-isolation check (unscopedDb imports, raw-client imports, scopedDb call shape — default-deny, raw driver imports) |
 | `pnpm verify:phase-0` | Run the full Phase 0 verification matrix |
 | `pnpm verify:db-schema` | Live-DB introspection: assert tables, enums, FKs, partial indexes match PLAN.md §2 (requires `DATABASE_URL`) |
 | `pnpm smoke:scoped-db` | Live-DB cross-user / soft-delete / forged-insert smoke test for `scopedDb` (requires `DATABASE_URL`). Self-cleaning. Re-run any time scopedDb changes. |
@@ -91,6 +101,12 @@ pnpm verify:phase-0   # typecheck + lint + ci:check-unscoped + db:generate + tes
 ```
 
 Output is a pass/fail matrix at the end. If any row fails, the script exits 1 and tells you which.
+
+GitHub Actions runs the same matrix on every push to `master` and every PR
+(`.github/workflows/ci.yml`) — no repository secrets needed; the script falls
+back to placeholder env values for `db:generate` and `build`. The live-DB
+checks (`smoke:scoped-db`, `verify:db-schema`) stay local since they need a
+real Neon branch.
 
 ## Session handoff (context-packager habit)
 
@@ -110,20 +126,27 @@ src/
 ├── app/
 │   ├── api/
 │   │   ├── inngest/route.ts         # serve({ signingKey })
-│   │   └── webhooks/clerk/route.ts  # svix-verified Clerk webhook
+│   │   ├── me/goals/route.ts        # authed scopedDb round trip (Phase 1 seed)
+│   │   └── webhooks/clerk/
+│   │       ├── route.ts             # svix-verified Clerk webhook + signup analytics
+│   │       └── route.test.ts        # signature-gate integration tests
 │   ├── (settings)/settings/page.tsx # placeholder shell
-│   ├── globals.css                  # goal-color palette CSS vars
+│   ├── globals.css                  # goal-color palette CSS vars + shadcn tokens
 │   └── layout.tsx                   # ClerkProvider
+├── components/ui/                   # shadcn/ui (button, card, dialog, … sonner)
 ├── db/
 │   ├── schema.ts                    # all tables, enums, indexes
-│   ├── client.ts                    # drizzle + neon-http
-│   ├── scoped.ts                    # scopedDb(userId)
+│   ├── client.ts                    # drizzle + neon-http (private; Layer 2/4 guarded)
+│   ├── scoped.ts                    # scopedDb(userId) — atomic inserts, self accessors
+│   ├── scoped.test.ts               # synchronous-guard unit tests
 │   ├── unscoped.ts                  # escape hatch (CI-restricted)
 │   └── migrate.ts                   # prod migration runner
 ├── lib/
 │   ├── analytics/{server,client}.ts # PostHog wrappers
-│   └── inngest/client.ts            # Inngest client
-└── middleware.ts                    # clerkMiddleware + public-route whitelist
+│   ├── inngest/client.ts            # Inngest client
+│   └── utils.ts                     # shadcn cn() helper
+└── proxy.ts                         # clerkMiddleware + public-route whitelist
+                                     # (Next 16 renamed middleware.ts → proxy.ts)
 ```
 
 ## Local webhook delivery
