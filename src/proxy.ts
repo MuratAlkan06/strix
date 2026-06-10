@@ -9,6 +9,9 @@ const isPublicRoute = createRouteMatcher([
   // Inngest's signed handshake also needs to bypass Clerk auth — the SDK
   // verifies INNGEST_SIGNING_KEY itself.
   "/api/inngest",
+  // Throwaway DAWN design-curation route — must be reachable without auth so it
+  // can be captured/reviewed. Removed when the playground is torn down post-mint.
+  "/playground(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

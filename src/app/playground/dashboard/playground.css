@@ -1,0 +1,224 @@
+/**
+ * playground.css — PLAYGROUND-LOCAL token overrides for the DAWN curation route.
+ *
+ * This file is imported ONLY by the /playground/dashboard segment. It does NOT
+ * touch src/app/globals.css — tokens are minted there ONCE post-curation. Here,
+ * the three variant wrappers (.v1 / .v2 / .v3) re-bind the shadcn css-vars
+ * (--background … --ring) so all three full palettes render on one screen, and
+ * define the --scene-* custom props + per-variant horizon (= header dawn sky).
+ *
+ * Polarity is carried by the wrappers themselves: V1/V3 also get `.dark` so the
+ * shadcn components' `dark:` styles engage; V2 stays light. No next-themes.
+ *
+ * Values are OKLCH "L C H" verbatim from DESIGN.md §2 (tables) + §4.3 (time-of-
+ * day recipes) + §5 (goal ramp). The contrast numbers in DESIGN.md are DRAFT;
+ * the axe harness (separate slice) is the source of truth.
+ */
+
+/* ===================================================================== */
+/* V1 — Dusk (dark-primary, amber)                                       */
+/* ===================================================================== */
+.v1 {
+  --background: oklch(0.18 0.035 264);
+  --foreground: oklch(0.94 0.012 250);
+  --card: oklch(0.225 0.038 262);
+  --card-foreground: oklch(0.94 0.012 250);
+  --popover: oklch(0.225 0.038 262);
+  --popover-foreground: oklch(0.94 0.012 250);
+  --primary: oklch(0.78 0.13 70);
+  --primary-foreground: oklch(0.22 0.05 70);
+  --secondary: oklch(0.3 0.035 262);
+  --secondary-foreground: oklch(0.9 0.012 250);
+  --muted: oklch(0.27 0.03 262);
+  --muted-foreground: oklch(0.7 0.02 258);
+  --accent: oklch(0.34 0.05 250);
+  --accent-foreground: oklch(0.95 0.01 250);
+  --destructive: oklch(0.62 0.16 28);
+  --border: oklch(0.92 0.01 250 / 12%);
+  --input: oklch(0.92 0.01 250 / 12%);
+  --ring: oklch(0.78 0.13 70);
+
+  /* goal ramp — dark (on dusk) values */
+  --goal-color-0: oklch(0.78 0.12 70);
+  --goal-color-1: oklch(0.7 0.09 240);
+  --goal-color-2: oklch(0.72 0.07 150);
+  --goal-color-3: oklch(0.72 0.1 28);
+  --goal-color-4: oklch(0.68 0.08 320);
+
+  /* emblem accent (2-tone) = amber primary */
+  --emblem-accent: var(--primary);
+}
+
+/* ===================================================================== */
+/* V2 — Pale Dawn (light-primary, amber)                                 */
+/* ===================================================================== */
+.v2 {
+  --background: oklch(0.985 0.006 240);
+  --foreground: oklch(0.24 0.04 262);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.04 262);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.04 262);
+  --primary: oklch(0.62 0.13 64);
+  --primary-foreground: oklch(0.99 0.005 80);
+  --secondary: oklch(0.95 0.012 250);
+  --secondary-foreground: oklch(0.3 0.04 262);
+  --muted: oklch(0.955 0.01 245);
+  --muted-foreground: oklch(0.5 0.03 258);
+  --accent: oklch(0.93 0.02 248);
+  --accent-foreground: oklch(0.28 0.04 262);
+  --destructive: oklch(0.55 0.17 28);
+  --border: oklch(0.9 0.012 248);
+  --input: oklch(0.9 0.012 248);
+  --ring: oklch(0.62 0.13 64);
+
+  /* goal ramp — light (on pale-dawn) values */
+  --goal-color-0: oklch(0.7 0.12 65);
+  --goal-color-1: oklch(0.55 0.09 245);
+  --goal-color-2: oklch(0.58 0.07 150);
+  --goal-color-3: oklch(0.6 0.1 30);
+  --goal-color-4: oklch(0.52 0.08 320);
+
+  --emblem-accent: var(--primary);
+}
+
+/* ===================================================================== */
+/* V3 — Slate / Coral (dark-primary, coral)                              */
+/* ===================================================================== */
+.v3 {
+  --background: oklch(0.2 0.018 230);
+  --foreground: oklch(0.94 0.008 220);
+  --card: oklch(0.245 0.02 228);
+  --card-foreground: oklch(0.94 0.008 220);
+  --popover: oklch(0.245 0.02 228);
+  --popover-foreground: oklch(0.94 0.008 220);
+  --primary: oklch(0.72 0.14 25);
+  --primary-foreground: oklch(0.21 0.05 25);
+  --secondary: oklch(0.3 0.018 228);
+  --secondary-foreground: oklch(0.9 0.008 220);
+  --muted: oklch(0.27 0.015 228);
+  --muted-foreground: oklch(0.71 0.012 222);
+  --accent: oklch(0.33 0.025 220);
+  --accent-foreground: oklch(0.95 0.008 220);
+  --destructive: oklch(0.6 0.15 22);
+  --border: oklch(0.92 0.008 220 / 12%);
+  --input: oklch(0.92 0.008 220 / 12%);
+  --ring: oklch(0.72 0.14 25);
+
+  /* goal ramp — dark values, reused (distinguishable on slate) */
+  --goal-color-0: oklch(0.78 0.12 70);
+  --goal-color-1: oklch(0.7 0.09 240);
+  --goal-color-2: oklch(0.72 0.07 150);
+  --goal-color-3: oklch(0.72 0.1 28);
+  --goal-color-4: oklch(0.68 0.08 320);
+
+  --emblem-accent: var(--primary);
+}
+
+/* ===================================================================== */
+/* Scene time-of-day recipes (DESIGN.md §4.3).                           */
+/* Base = dusk reference. Silhouette fills derive from each variant's     */
+/* chrome so the scene reads as part of its palette.                      */
+/* ===================================================================== */
+
+/* --- shared silhouette + accent fills, per variant (back→front: lighter→darker) */
+.v1 {
+  --scene-far: oklch(0.26 0.05 268);
+  --scene-mid: oklch(0.22 0.055 270);
+  --scene-near: oklch(0.16 0.05 272);
+  --scene-accent: oklch(0.7 0.02 258);
+}
+.v2 {
+  /* light variant: silhouettes are deep ink-indigo so they read on pale sky */
+  --scene-far: oklch(0.46 0.07 262);
+  --scene-mid: oklch(0.38 0.075 264);
+  --scene-near: oklch(0.3 0.08 266);
+  --scene-accent: oklch(0.5 0.03 258);
+}
+.v3 {
+  --scene-far: oklch(0.27 0.04 232);
+  --scene-mid: oklch(0.23 0.045 234);
+  --scene-near: oklch(0.17 0.04 236);
+  --scene-accent: oklch(0.71 0.012 222);
+}
+
+/* --- DAWN (default header + tiles where a goal exists) --------------- */
+/* V1 dawn sky = the V1 horizon recipe; sun = amber. */
+.v1 .scene-dawn {
+  --scene-sky-top: oklch(0.2 0.045 270);
+  --scene-sky-mid: oklch(0.3 0.07 300);
+  --scene-sky-bottom: oklch(0.55 0.12 50);
+  --scene-sun: oklch(0.82 0.12 75);
+}
+/* V2 dawn sky = the V2 (pale) horizon recipe. */
+.v2 .scene-dawn {
+  --scene-sky-top: oklch(0.93 0.03 255);
+  --scene-sky-mid: oklch(0.9 0.055 40);
+  --scene-sky-bottom: oklch(0.95 0.04 75);
+  --scene-sun: oklch(0.86 0.09 80);
+}
+/* V3 dawn sky = the V3 (coral) horizon recipe. */
+.v3 .scene-dawn {
+  --scene-sky-top: oklch(0.22 0.03 235);
+  --scene-sky-mid: oklch(0.34 0.06 350);
+  --scene-sky-bottom: oklch(0.58 0.13 20);
+  --scene-sun: oklch(0.8 0.12 25);
+}
+
+/* --- PRE-DAWN (empty / "nothing started") --------------------------- */
+.v1 .scene-pre-dawn,
+.v3 .scene-pre-dawn {
+  --scene-sky-top: oklch(0.16 0.03 270);
+  --scene-sky-mid: oklch(0.22 0.04 285);
+  --scene-sky-bottom: oklch(0.3 0.05 320);
+  --scene-sun: oklch(0.5 0.06 320);
+}
+.v2 .scene-pre-dawn {
+  /* pale base: lighten stops, drop chroma (DESIGN.md §4.3 note) */
+  --scene-sky-top: oklch(0.62 0.02 270);
+  --scene-sky-mid: oklch(0.68 0.025 285);
+  --scene-sky-bottom: oklch(0.76 0.03 320);
+  --scene-sun: oklch(0.74 0.04 320);
+}
+
+/* --- DAY ("all caught up") ------------------------------------------ */
+.v1 .scene-day,
+.v3 .scene-day {
+  --scene-sky-top: oklch(0.55 0.07 250);
+  --scene-sky-mid: oklch(0.72 0.05 230);
+  --scene-sky-bottom: oklch(0.88 0.04 90);
+  --scene-sun: oklch(0.95 0.06 85);
+}
+.v2 .scene-day {
+  --scene-sky-top: oklch(0.78 0.04 250);
+  --scene-sky-mid: oklch(0.86 0.03 230);
+  --scene-sky-bottom: oklch(0.95 0.025 90);
+  --scene-sun: oklch(0.97 0.05 85);
+}
+
+/* --- DUSK (evening / settings ambient) ------------------------------ */
+.v1 .scene-dusk,
+.v3 .scene-dusk {
+  --scene-sky-top: oklch(0.2 0.04 285);
+  --scene-sky-mid: oklch(0.3 0.06 340);
+  --scene-sky-bottom: oklch(0.48 0.1 30);
+  --scene-sun: oklch(0.74 0.1 40);
+}
+.v2 .scene-dusk {
+  --scene-sky-top: oklch(0.6 0.025 285);
+  --scene-sky-mid: oklch(0.7 0.04 340);
+  --scene-sky-bottom: oklch(0.82 0.06 30);
+  --scene-sun: oklch(0.86 0.07 40);
+}
+
+/* ===================================================================== */
+/* Motion — subtle hover/checked transitions only (ease-out, 150–300ms). */
+/* Sunrise/completion is a separate slice; nothing here animates a scene. */
+/* ===================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  .pg-row {
+    transition:
+      background-color 180ms ease-out,
+      color 180ms ease-out;
+  }
+}
