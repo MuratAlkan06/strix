@@ -88,6 +88,7 @@ pnpm ci:check-unscoped
 | `pnpm test:run` | Vitest, one-shot |
 | `pnpm db:*` | Drizzle commands (see above) |
 | `pnpm ci:check-unscoped` | Four-layer access-isolation check (unscopedDb imports, raw-client imports, scopedDb call shape — default-deny, raw driver imports) |
+| `pnpm ci:check-doc-parity` | Deterministic doc↔code parity (layer-count phrase, allowlist quotes, enum lists in PLAN.md/verify-schema, README layout-tree paths). Invariants are admitted only after a real drift burned us — see the script header. |
 | `pnpm verify:phase-0` | Run the full Phase 0 verification matrix |
 | `pnpm verify:db-schema` | Live-DB introspection: assert tables, enums, FKs, partial indexes match PLAN.md §2 (requires `DATABASE_URL`) |
 | `pnpm smoke:scoped-db` | Live-DB cross-user / soft-delete / forged-insert smoke test for `scopedDb` (requires `DATABASE_URL`). Self-cleaning. Re-run any time scopedDb changes. |
@@ -97,7 +98,7 @@ pnpm ci:check-unscoped
 Each phase has a single command that runs every check it needs to call itself done:
 
 ```bash
-pnpm verify:phase-0   # typecheck + lint + ci:check-unscoped + db:generate + test:run + build
+pnpm verify:phase-0   # typecheck + lint + ci:check-unscoped + ci:check-doc-parity + db:generate + test:run + build
 ```
 
 Output is a pass/fail matrix at the end. If any row fails, the script exits 1 and tells you which.
