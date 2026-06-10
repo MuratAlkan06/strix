@@ -300,6 +300,10 @@ The injected design-system DB contributes **only** this checklist (its visual va
 - **Numerics:** tabular figures for timers/data.
 - **Checkpoints:** 375 / 768 / 1024 / 1440.
 
+**The `verify:ui` harness (this is the contrast source of truth).** Playwright + `@axe-core/playwright` scan `/playground/dashboard` (all three variant sections) — a full-page **WCAG 2.1 AA** check (`wcag2a/2aa/21a/21aa`) that must report **zero violations, with no exclusions or suppressions**. It runs against the **production** server with reduced-motion + animations disabled so results are deterministic. Config: [`../playwright.config.ts`](../playwright.config.ts); spec: [`../e2e/playground-dashboard.spec.ts`](../e2e/playground-dashboard.spec.ts); commands `pnpm verify:ui` / `pnpm verify:ui:update`. It is a **separate** gate from `verify:phase-0` (kept fast) and runs as its own CI job. This is what the "prose numbers are DRAFT" caveat defers to — e.g. it is what caught and corrected the V2 on-white amber (§2 V2 note: warning text `primary` → `0.57 L`; goal-0 dot → `0.65 L`).
+
+**Cross-platform screenshot scheme (the classic trap, handled).** `toHaveScreenshot` baselines render differently on macOS vs Linux (font antialiasing), so a single PNG can't serve both. The harness uses Playwright's **default platform-suffixed snapshot names** (`…-chromium-linux.png` for CI, `…-chromium-darwin.png` for local macOS) — the two baselines coexist in `e2e/playground-dashboard.spec.ts-snapshots/` and never collide. The **axe scan always runs** (platform-independent); a screenshot spec **skips itself when no baseline exists for the current platform**, so CI is green before its Linux baselines land and is never flaky. Linux baselines are generated in the matching **`mcr.microsoft.com/playwright:v<version>-noble` Docker image** so they byte-match the `ubuntu-latest` runner; bootstrap/refresh with `pnpm verify:ui:update` (local) or that image (Linux).
+
 ---
 
 ## 12. Future explorations (PARKED — do not design now)
