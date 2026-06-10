@@ -4,51 +4,114 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* =========================================================================
+ * DAWN — V1 Dusk, MINTED CANONICAL (frozen 2026-06-10).
+ *
+ * The app is DARK-PRIMARY BY DEFAULT: these :root values are the V1 Dusk
+ * palette (DESIGN.md §2 V1 table, OKLCH verbatim), so no `.dark` class is
+ * needed to render the canonical look. Light mode is a future designed slice
+ * — see DESIGN.md §2 (V2 Pale Dawn recipe recorded there).
+ *
+ * Tokens are FROZEN: changing them requires a new design decision recorded in
+ * DESIGN.md + DECISIONS.md, not an ad-hoc edit here.
+ * ========================================================================= */
 :root {
 
-  /* Goal-color palette (Phase 0 placeholders — earth-tone direction per
-   * SPEC §4 brand register). Finalized in the Phase 5 design pass.
-   * Goals reference these via `var(--goal-color-${color_index})`. */
-  --goal-color-0: #8a6a4f; /* warm earth */
-  --goal-color-1: #4a5d4a; /* lichen green */
-  --goal-color-2: #3a4e5f; /* deep alpine blue */
-  --goal-color-3: #6b4a3a; /* clay brown */
-  --goal-color-4: #5a4a5a; /* slate plum */
+  /* Goal-attribution ramp — DARK values (on dusk), DESIGN.md §5. Always
+   * text-paired (color is never the sole signal). Referenced by goals via
+   * `var(--goal-color-${color_index})`. */
+  --goal-color-0: oklch(0.78 0.12 70); /* dawn amber */
+  --goal-color-1: oklch(0.7 0.09 240); /* alpine blue */
+  --goal-color-2: oklch(0.72 0.07 150); /* lichen green */
+  --goal-color-3: oklch(0.72 0.1 28); /* clay rose */
+  --goal-color-4: oklch(0.68 0.08 320); /* dusk plum */
 
-  /* shadcn/ui tokens (neutral defaults; restyled toward the earth-tone
-   * register in the Phase 5 design pass). */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* shadcn/ui slots — V1 Dusk (DESIGN.md §2 V1 table). Deep dusk indigo-navy
+   * ground, warm amber as the single point of heat (primary + ring).
+   * --input mirrors --border; --popover(-foreground) mirrors --card(-foreground). */
+  --background: oklch(0.18 0.035 264);
+  --foreground: oklch(0.94 0.012 250);
+  --card: oklch(0.225 0.038 262);
+  --card-foreground: oklch(0.94 0.012 250);
+  --popover: oklch(0.225 0.038 262);
+  --popover-foreground: oklch(0.94 0.012 250);
+  --primary: oklch(0.78 0.13 70);
+  --primary-foreground: oklch(0.22 0.05 70);
+  --secondary: oklch(0.3 0.035 262);
+  --secondary-foreground: oklch(0.9 0.012 250);
+  --muted: oklch(0.27 0.03 262);
+  --muted-foreground: oklch(0.7 0.02 258);
+  --accent: oklch(0.34 0.05 250);
+  --accent-foreground: oklch(0.95 0.01 250);
+  --destructive: oklch(0.62 0.16 28);
+  --border: oklch(0.92 0.01 250 / 12%);
+  --input: oklch(0.92 0.01 250 / 12%);
+  --ring: oklch(0.78 0.13 70);
+
+  /* charts/sidebar derive from the dusk family (not surfaced in MVP product UI;
+   * kept token-complete for shadcn components that read them). */
+  --chart-1: oklch(0.78 0.13 70);
+  --chart-2: oklch(0.7 0.09 240);
+  --chart-3: oklch(0.72 0.07 150);
+  --chart-4: oklch(0.72 0.1 28);
+  --chart-5: oklch(0.68 0.08 320);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.225 0.038 262);
+  --sidebar-foreground: oklch(0.94 0.012 250);
+  --sidebar-primary: oklch(0.78 0.13 70);
+  --sidebar-primary-foreground: oklch(0.22 0.05 70);
+  --sidebar-accent: oklch(0.34 0.05 250);
+  --sidebar-accent-foreground: oklch(0.95 0.01 250);
+  --sidebar-border: oklch(0.92 0.01 250 / 12%);
+  --sidebar-ring: oklch(0.78 0.13 70);
+
+  /* --- Scene custom props (DESIGN.md §4). Silhouette fills (back→front:
+   * lighter→darker) derive from the dusk chrome so scenes read as part of the
+   * palette. These + the per-state sky/sun sets below power <Scene> and are the
+   * axis future temperament colorways extend (DESIGN.md §12). --- */
+  --scene-far: oklch(0.26 0.05 268);
+  --scene-mid: oklch(0.22 0.055 270);
+  --scene-near: oklch(0.16 0.05 272);
+  --scene-accent: oklch(0.7 0.02 258);
+}
+
+/* --- Scene time-of-day states (DESIGN.md §4.3, dusk-base reference). One
+ * <svg>, many moods: a state class sets the sky stops + sun; the SVG fills
+ * read these custom props. Bound on the Scene root, not on :root. --- */
+.scene-dawn {
+  /* default header / goals in progress — = the V1 horizon recipe (DESIGN.md §2) */
+  --scene-sky-top: oklch(0.2 0.045 270);
+  --scene-sky-mid: oklch(0.3 0.07 300);
+  --scene-sky-bottom: oklch(0.55 0.12 50);
+  --scene-sun: oklch(0.82 0.12 75);
+}
+.scene-pre-dawn {
+  /* empty-state "nothing started" — sun absent or a faint sub-horizon disc */
+  --scene-sky-top: oklch(0.16 0.03 270);
+  --scene-sky-mid: oklch(0.22 0.04 285);
+  --scene-sky-bottom: oklch(0.3 0.05 320);
+  --scene-sun: oklch(0.5 0.06 320);
+}
+.scene-day {
+  /* "all caught up today" calm */
+  --scene-sky-top: oklch(0.55 0.07 250);
+  --scene-sky-mid: oklch(0.72 0.05 230);
+  --scene-sky-bottom: oklch(0.88 0.04 90);
+  --scene-sun: oklch(0.95 0.06 85);
+}
+.scene-dusk {
+  /* evening / settings ambient */
+  --scene-sky-top: oklch(0.2 0.04 285);
+  --scene-sky-mid: oklch(0.3 0.06 340);
+  --scene-sky-bottom: oklch(0.48 0.1 30);
+  --scene-sun: oklch(0.74 0.1 40);
+}
+.scene-sunrise {
+  /* goal completion (the payoff) — animated target; sky brightens, sun rises */
+  --scene-sky-top: oklch(0.3 0.06 300);
+  --scene-sky-mid: oklch(0.55 0.12 60);
+  --scene-sky-bottom: oklch(0.86 0.1 85);
+  --scene-sun: oklch(0.9 0.1 80);
 }
 
 @theme inline {
@@ -59,9 +122,15 @@
   --color-goal-2: var(--goal-color-2);
   --color-goal-3: var(--goal-color-3);
   --color-goal-4: var(--goal-color-4);
-  --font-sans: var(--font-geist-sans);
+  /* DAWN brand faces (DESIGN.md §3). `@theme inline` dereferences the var()
+   * expression at build, so these utilities emit `font-family: var(--font-…)`
+   * pointing at the next/font variables the ROOT layout exposes — Hanken for
+   * body/UI, Fraunces for display/headings. (Pointing them at --font-geist-sans
+   * is what baked Geist in; corrected at the V1 mint.) Geist Mono stays for
+   * --font-mono, debug only. */
+  --font-sans: var(--font-hanken);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist-sans);
+  --font-heading: var(--font-fraunces);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -100,38 +169,44 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Dark-primary: the canonical look already lives in :root, so `.dark` is
+ * aligned to the SAME V1 Dusk values — toggling a `.dark` class (or a shadcn
+ * `dark:` variant resolving against it) is a deliberate no-op, never a revert
+ * to a stale neutral palette. Light mode is a future designed slice
+ * (DESIGN.md §2, V2 Pale Dawn). Kept rather than removed because shadcn
+ * components ship `dark:` utilities and the playground tags V1/V3 `.dark`. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.18 0.035 264);
+  --foreground: oklch(0.94 0.012 250);
+  --card: oklch(0.225 0.038 262);
+  --card-foreground: oklch(0.94 0.012 250);
+  --popover: oklch(0.225 0.038 262);
+  --popover-foreground: oklch(0.94 0.012 250);
+  --primary: oklch(0.78 0.13 70);
+  --primary-foreground: oklch(0.22 0.05 70);
+  --secondary: oklch(0.3 0.035 262);
+  --secondary-foreground: oklch(0.9 0.012 250);
+  --muted: oklch(0.27 0.03 262);
+  --muted-foreground: oklch(0.7 0.02 258);
+  --accent: oklch(0.34 0.05 250);
+  --accent-foreground: oklch(0.95 0.01 250);
+  --destructive: oklch(0.62 0.16 28);
+  --border: oklch(0.92 0.01 250 / 12%);
+  --input: oklch(0.92 0.01 250 / 12%);
+  --ring: oklch(0.78 0.13 70);
+  --chart-1: oklch(0.78 0.13 70);
+  --chart-2: oklch(0.7 0.09 240);
+  --chart-3: oklch(0.72 0.07 150);
+  --chart-4: oklch(0.72 0.1 28);
+  --chart-5: oklch(0.68 0.08 320);
+  --sidebar: oklch(0.225 0.038 262);
+  --sidebar-foreground: oklch(0.94 0.012 250);
+  --sidebar-primary: oklch(0.78 0.13 70);
+  --sidebar-primary-foreground: oklch(0.22 0.05 70);
+  --sidebar-accent: oklch(0.34 0.05 250);
+  --sidebar-accent-foreground: oklch(0.95 0.01 250);
+  --sidebar-border: oklch(0.92 0.01 250 / 12%);
+  --sidebar-ring: oklch(0.78 0.13 70);
 }
 
 @layer base {

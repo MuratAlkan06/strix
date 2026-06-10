@@ -15,23 +15,12 @@
  * the axe harness (separate slice) is the source of truth.
  */
 
-/* ===================================================================== */
-/* Brand faces — applied DIRECTLY, bypassing the @theme-baked font        */
-/* utilities. globals.css declares --font-sans / --font-heading in an     */
-/* `@theme inline` block, so `.font-sans` / `.font-heading` emit          */
-/* `font-family: var(--font-geist-sans)` baked in (the value, not a       */
-/* reference to --font-sans) and ignore any wrapper-level token override. */
-/* So we set font-family here off the next/font variables that layout.tsx */
-/* exposes: body → Hanken Grotesk on the wrapper; display → Fraunces on    */
-/* the elements that carry `.font-heading`. Permanent fix at token mint    */
-/* switches the font tokens to genuine runtime indirection (plan Rev 6.3). */
-/* ===================================================================== */
-.pg-root {
-  font-family: var(--font-hanken), system-ui, sans-serif;
-}
-.pg-root :is(.font-heading) {
-  font-family: var(--font-fraunces), Georgia, serif;
-}
+/* The .pg-root font bypass was REMOVED at the V1 mint. The brand faces now
+ * render through the GLOBAL wiring: the root layout loads Fraunces + Hanken and
+ * exposes --font-fraunces / --font-hanken on <html>, and globals.css points the
+ * @theme-inline font tokens at those vars, so `.font-sans` / `.font-heading`
+ * emit var(--font-hanken) / var(--font-fraunces) here with no local override.
+ * This deletion is the proof the mint is wired right (DESIGN.md §3). */
 
 /* ===================================================================== */
 /* V1 — Dusk (dark-primary, amber)                                       */
