@@ -54,19 +54,22 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const ROOT = process.cwd();
 const SRC = join(ROOT, "src");
 
 // Directories whose files may import `unscopedDb`.
-const UNSCOPED_ALLOWED_PREFIXES = [
+// Exported: scripts/check-doc-parity.mjs asserts the docs quote this list.
+export const UNSCOPED_ALLOWED_PREFIXES = [
   ["src", "lib", "inngest"].join(sep),
   ["src", "app", "api", "webhooks"].join(sep),
 ];
 
 // Single files that may import `unscopedDb`. (Prefix matching appends a
 // path separator, so individual files need their own exact-match set.)
-const UNSCOPED_ALLOWED_FILES = new Set([
+// Exported for the same doc-parity reason.
+export const UNSCOPED_ALLOWED_FILES = new Set([
   ["src", "lib", "auth", "lifecycle.ts"].join(sep),
 ]);
 
@@ -198,18 +201,29 @@ function checkFile(full) {
   }
 }
 
-walk(SRC);
+function main() {
+  walk(SRC);
 
-if (violations.length > 0) {
-  console.error("Access-isolation violation(s):");
-  for (const v of violations) console.error("  - " + v);
-  console.error(
-    "\nUse scopedDb(userId) from @/db/scoped for user-authenticated paths. " +
-      "Use unscopedDb from @/db/unscoped (under lib/inngest/**, app/api/webhooks/**, " +
-      "or lib/auth/lifecycle.ts) only for genuinely cross-user or lifecycle operations. " +
-      "Allowlist changes are made in scripts/check-unscoped-db.mjs only.",
-  );
-  process.exit(1);
+  if (violations.length > 0) {
+    console.error("Access-isolation violation(s):");
+    for (const v of violations) console.error("  - " + v);
+    console.error(
+      "\nUse scopedDb(userId) from @/db/scoped for user-authenticated paths. " +
+        "Use unscopedDb from @/db/unscoped (under lib/inngest/**, app/api/webhooks/**, " +
+        "or lib/auth/lifecycle.ts) only for genuinely cross-user or lifecycle operations. " +
+        "Allowlist changes are made in scripts/check-unscoped-db.mjs only.",
+    );
+    process.exit(1);
+  }
+
+  console.log("check-unscoped-db: OK (no violations).");
 }
 
-console.log("check-unscoped-db: OK (no violations).");
+// Run only when executed directly — check-doc-parity.mjs imports the
+// allowlist constants above without triggering a scan.
+if (
+  process.argv[1] &&
+  pathToFileURL(process.argv[1]).href === import.meta.url
+) {
+  main();
+}
