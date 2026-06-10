@@ -12,7 +12,7 @@
 
 - `pnpm create next-app` — Next.js 15 App Router, TypeScript, Tailwind, `src/` directory, ESLint, Turbopack dev.
 - Tailwind config: extend palette with 5 `--goal-color-N` CSS variables; **valid earth-tone placeholder values (not literal `...`)** so Phase 1's dashboard renders real colors. Final palette set during Phase 5 design pass.
-- shadcn/ui init: install Button, Card, Dialog, Input, Label, Select, Switch, Toast, Tooltip, Sheet to start.
+- shadcn/ui init: install Button, Card, Dialog, Input, Label, Select, Switch, Sonner (shadcn's toast successor — the `toast` component is deprecated in the registry), Tooltip, Sheet to start.
 - TypeScript strict mode on. Path aliases: `@/app`, `@/lib`, `@/components`, `@/db`.
 
 ### Database
@@ -20,23 +20,28 @@
 - Neon project created; `DATABASE_URL` in `.env.local` and Vercel env.
 - Drizzle config: `drizzle/`, `db/schema.ts`, `db/migrations/`, `drizzle.config.ts`.
 - Schema definitions for **all** tables in PLAN.md §2: users, subscriptions, usage_counters, goals, **goal_drafts**, intake_summaries, recurring_tasks, task_completions, milestones, equipment, weekly_check_ins, replan_proposals, **stripe_webhook_events**.
-- Postgres enums: `user_tier`, `intensity_level`, `goal_status`, `task_cadence`, `weekly_feeling`, `replan_trigger`, `replan_status`, `activity_type`, `billing_period`, `subscription_status`, `archive_reason`.
-- Indexes: `task_completions(user_id, for_date)`, `goals(user_id, status)`, `equipment(goal_id)`, `milestones(goal_id, position)`, `goal_drafts(user_id, expires_at)`, `goal_drafts(session_token)`, `replan_proposals(user_id)`, `users(deleted_at) WHERE deleted_at IS NOT NULL`.
+- Postgres enums: `user_tier`, `intensity_level`, `goal_status`, `task_cadence`, `weekly_feeling`, `replan_trigger`, `replan_status`, `activity_type`, `billing_period`, `subscription_status`, `archive_reason`. **`weekly_feeling` includes `'skipped'`** — written only by Phase 2's check-in skip path and excluded from every feeling-signal query (skips are not sentiment data).
+- Indexes: `task_completions(user_id, for_date)`, `goals(user_id, status)`, `equipment(goal_id)`, `milestones(goal_id, position)`, `goal_drafts(user_id, expires_at)`, **unique** `goal_drafts(session_token)` (cookie-mapped lookup credential — one draft per token), `replan_proposals(user_id)`, `users(deleted_at) WHERE deleted_at IS NOT NULL`.
 - Unique constraints: `task_completions(recurring_task_id, for_date)`, `usage_counters(user_id, period_start)`, `weekly_check_ins(user_id, week_start_date)`, partial `subscriptions(user_id) WHERE status IN ('trialing','active')`.
 - FK ON DELETE behavior per PLAN.md §2 table.
 - Migrations run cleanly against a fresh Neon branch.
 
 ### Access scoping
 
-- `lib/db/scoped.ts` exports `scopedDb(userId: string)` returning a Drizzle proxy that:
-  - On `select` / `update` / `delete` / `count` / aggregate queries: injects `eq(table.user_id, userId)` for direct-ownership tables; injects an existence-join `EXISTS (SELECT 1 FROM goals WHERE goals.id = <table>.goal_id AND goals.user_id = $userId)` for transitive-ownership tables.
-  - On `insert` to direct-ownership tables: validates `user_id` in the payload matches `userId`; throws otherwise.
-  - On `insert` to transitive-ownership tables (intake_summaries, recurring_tasks, milestones, equipment, replan_proposals): runs a pre-insert `SELECT 1 FROM goals WHERE id = $goal_id AND user_id = $userId LIMIT 1` and throws if no row.
-  - **`task_completions` insert** has an additional pre-check: `SELECT 1 FROM recurring_tasks rt JOIN goals g ON g.id = rt.goal_id WHERE rt.id = $recurring_task_id AND g.user_id = $userId LIMIT 1`. Prevents forged-recurring_task_id DoS via the unique-constraint collision.
-  - Applies a global filter excluding rows where the parent user has `deleted_at IS NOT NULL` — built in from Phase 0, not retroactively in Phase 4. (Phase 4's verification re-tests this across Phase 1-3 surfaces.)
+- `src/db/scoped.ts` exports `scopedDb(userId: string)` returning a constrained surface (`selectFrom` / `count` / `insert` / `update` / `delete` / `getSelf` / `updateSelf`) that:
+  - On `selectFrom` / `count` / `update` / `delete`: injects `eq(table.user_id, userId)` for direct-ownership tables; injects an existence-join `EXISTS (SELECT 1 FROM goals JOIN users … WHERE goals.id = <table>.goal_id AND goals.user_id = $userId AND users.deleted_at IS NULL)` for transitive-ownership tables.
+  - On **every `insert`**: issues a single atomic `INSERT … SELECT` whose SELECT side carries the ownership proof — zero rows inserted ⇒ throw. Direct-ownership inserts prove the scoped user exists and is live; transitive inserts prove the target goal belongs to the (live) scoped user. No check-then-insert window, one round-trip instead of two, and a soft-deleted user's writes are rejected the same way their reads come back empty.
+  - **`task_completions` insert**: `goal_id` is **derived server-side** from the recurring task's parent (`SELECT …, rt.goal_id, … FROM recurring_tasks rt JOIN goals g JOIN users u WHERE rt.id = $recurring_task_id AND g.user_id = $userId AND u.deleted_at IS NULL`) — the stored `goal_id` can never disagree with `rt.goal_id`. A caller-supplied `goal_id` is validated in the same statement and rejected on mismatch. Also prevents forged-recurring_task_id DoS via the unique-constraint collision.
+  - On `update().set()`: validates the payload against per-table **forbidden mutation keys** — `user_id`/`id` on direct-ownership tables, `goal_id`/`id` on transitive tables, plus `recurring_task_id`+`goal_id` on task_completions and the denormalized `user_id` on replan_proposals. The WHERE scope governs *which* rows are touchable; this governs *what* can be written into them (without it, `set({user_id})` transfers a row into another account and `set({goal_id})` injects rows into another goal). Re-parenting is rejected outright — no same-user re-parent path exists in MVP, and if one is ever needed it must add ownership validation rather than relax this. The guarantee assumes plain parameterized `set` values; raw `sql\`\`` fragments bypass key inspection and must never carry user input.
+  - Applies a global filter excluding rows where the parent user has `deleted_at IS NOT NULL` — on reads **and writes**, built in from Phase 0, not retroactively in Phase 4. (Phase 4's verification re-tests this across Phase 1-3 surfaces.)
 - Direct-user-id tables: goals, goal_drafts, usage_counters, weekly_check_ins, subscriptions, task_completions. Transitive tables (scoped by `goal_id`): intake_summaries, recurring_tasks, milestones, equipment, replan_proposals.
-- A "raw" `unscopedDb` exists for genuinely cross-user operations (webhooks, Inngest jobs) — explicitly named to make grep-for-leaks easy. **CI lint rule** restricts `unscopedDb` imports to `lib/inngest/*` and `app/api/webhooks/*` (ESLint custom rule or simple grep check in CI; fails the build on violation).
-- Unit tests assert: (a) helper functions throw without a `userId`; (b) cross-user reads return empty; (c) cross-user inserts throw on transitive ownership check; (d) `task_completions` insert with a forged `recurring_task_id` throws; (e) soft-deleted user's data is excluded from authenticated queries.
+- The `users` row is reachable only through `getSelf()` / `updateSelf()` — pinned to the scoped user's own live row; `updateSelf` forbids system-managed columns (`id`, `email`, `tier`, `stripe_customer_id`, `deleted_at`) and permits only `display_name` / `timezone` / `intensity_preference`. This is the sanctioned path for Phase 1's intake-confirmation write, Phase 2's replan-prompt read, and Phase 4's profile settings — no `unscopedDb` needed for any of them.
+- A "raw" `unscopedDb` exists for genuinely cross-user or lifecycle operations — explicitly named to make grep-for-leaks easy. **CI check** (`scripts/check-unscoped-db.mjs`, four layers, fails the build on violation):
+  - **Layer 1** — `unscopedDb` imports allowed only in `lib/inngest/*`, `app/api/webhooks/*`, and `lib/auth/lifecycle.ts` (the soft-delete + login-recovery module, which must see soft-deleted users). Additions to this allowlist are made in that script only — never weaken the rule inline at a call site.
+  - **Layer 2** — the raw client (`internalDb` from `db/client.ts`) importable only by `scoped.ts` / `unscoped.ts` / `migrate.ts`, so the Layer-1 rule can't be bypassed with zero indirection.
+  - **Layer 3** — `scopedDb(...)` call sites must pass `userId` (destructured from `auth()`) or `auth().userId`; **default-deny** — any argument shape the check can't parse is a violation, so wrapping user input in a helper call doesn't slip through. Test files exempt.
+  - **Layer 4** — the raw Neon/drizzle driver is importable only by `db/client.ts`, so no file can mint a fresh query-capable client around the other layers.
+- Unit tests assert: (a) helper functions throw without a `userId`; (b) cross-user reads return empty; (c) cross-user inserts throw on the atomic transitive ownership proof; (d) `task_completions` insert with a forged `recurring_task_id` throws; (e) soft-deleted user's data is excluded from authenticated queries **and their inserts are rejected**; (f) `update().set({user_id})` on a direct table throws; (g) `update().set({goal_id})` on a transitive table throws; (h) `task_completions` insert with a mismatched `goal_id` (even the user's own other goal) is rejected — stored `goal_id` always equals `rt.goal_id`; (i) `updateSelf` rejects system-managed columns.
 
 ### Auth
 
@@ -69,34 +74,46 @@
 
 ## Phase-specific context
 
-### scopedDb shape (Drizzle-accurate)
+### scopedDb surface (as implemented)
 
-Drizzle's API is `db.select().from(table).where(...)`. `scopedDb(userId)` returns a builder that pre-applies a `.where()` clause and validates inserts:
+`scopedDb(userId)` exposes a deliberately narrow surface — not the raw Drizzle builder chain — so every operation passes through the scope injection and payload validation:
 
 ```ts
-const sdb = scopedDb(userId)
+const sdb = scopedDb(userId)   // throws synchronously without a userId
 
 // Direct ownership:
-await sdb.select().from(goals)                     // .where(eq(goals.user_id, userId)) auto-added
-await sdb.select({ count: count() }).from(goals)   // count() composes correctly with the injected where
-await sdb.update(goals).set({...}).where(eq(goals.id, goalId))  // user_id filter still applied
-await sdb.insert(goals).values({ user_id: userId, title: "..." })  // throws if user_id mismatch
+await sdb.selectFrom(goals)                          // WHERE user_id = $userId AND user-is-live
+await sdb.count(goals)                               // same scope, COUNT(*)
+await sdb.update(goals, { set: {...}, where: eq(goals.id, goalId) })
+//   scope AND-merged with the extra where; set() rejects forbidden keys (user_id, id, …)
+await sdb.delete(goals, { where: eq(goals.id, goalId) })
+await sdb.insert(goals, { user_id: userId, title: "...", color_index: 0 })
+//   atomic INSERT … SELECT … FROM users WHERE id = $userId AND deleted_at IS NULL
+//   → zero rows (missing/soft-deleted user) throws; payload user_id mismatch throws first
 
 // Transitive ownership (via goal_id):
-await sdb.select().from(milestones)                // EXISTS-subquery on goals.user_id = userId
-await sdb.insert(milestones).values({ goal_id, title: "..." })  // pre-validates goal_id ownership
+await sdb.selectFrom(milestones)                     // EXISTS-join proves parent-goal ownership
+await sdb.insert(milestones, { goal_id, title: "..." })
+//   atomic INSERT … SELECT … FROM goals JOIN users
+//   WHERE goals.id = $goal_id AND goals.user_id = $userId AND users.deleted_at IS NULL
+//   → zero rows ⇒ not owned ⇒ throws
 
-// task_completions insert (extra guard):
-await sdb.insert(taskCompletions).values({ recurring_task_id, goal_id, user_id, for_date })
-// runs: SELECT 1 FROM recurring_tasks rt JOIN goals g ON g.id = rt.goal_id
-// WHERE rt.id = $recurring_task_id AND g.user_id = $userId LIMIT 1
-// throws if no row
+// task_completions — goal_id derived, never trusted:
+await sdb.insert(taskCompletions, { recurring_task_id, user_id, for_date })
+//   INSERT … SELECT …, rt.goal_id, … FROM recurring_tasks rt
+//   JOIN goals g ON g.id = rt.goal_id JOIN users u ON u.id = g.user_id
+//   WHERE rt.id = $recurring_task_id AND g.user_id = $userId AND u.deleted_at IS NULL
+//   goal_id omitted → derived from rt; supplied → validated in-SQL, mismatch ⇒ zero rows ⇒ throws
 
-// Soft-deleted user filter is applied transitively via the parent users join.
+// Own users row — the only path to it:
+await sdb.getSelf()                                  // own live row, or null if soft-deleted
+await sdb.updateSelf({ timezone: "Europe/Istanbul" })
+//   display_name / timezone / intensity_preference only;
+//   id / email / tier / stripe_customer_id / deleted_at are system-managed and rejected
 
-// Escape hatch — name signals intent:
+// Escape hatch — name signals intent; importable only where Layer 1 allows:
 import { unscopedDb } from "@/db/unscoped"
-unscopedDb.select().from(users).where(eq(users.id, userId))  // Clerk webhook only
+unscopedDb.insert(users).values({...})               // Clerk webhook only
 ```
 
 ### Why no Postgres RLS
@@ -124,11 +141,15 @@ Components read via `var(--goal-color-${color_index})`. Color assignment lives i
 - POSTing to `/api/webhooks/clerk` without a valid Svix signature returns 400; with a valid signature returns 200 + inserts the row.
 - POSTing to `/api/inngest` without a valid Inngest signature is rejected by the SDK (401/403).
 - Calling any `scopedDb(userId)` query with a wrong user_id returns empty; calling without a user_id throws.
-- Calling `scopedDb(userId).insert(milestones).values({ goal_id: <victim's goal>, ... })` throws.
-- Calling `scopedDb(userId).insert(taskCompletions).values({ recurring_task_id: <victim's task>, ... })` throws.
-- `scopedDb(userA).select({ count: count() }).from(goals)` returns only user A's goal count even if user B has goals in the table.
+- Calling `scopedDb(userId).insert(milestones, { goal_id: <victim's goal>, ... })` throws (zero-row atomic ownership proof).
+- Calling `scopedDb(userId).insert(taskCompletions, { recurring_task_id: <victim's task>, ... })` throws.
+- `task_completions` insert **omitting `goal_id`** stores `rt.goal_id` (derivation); supplying a mismatched `goal_id` — including the user's own *other* goal — throws. Stored `goal_id` always equals the task's parent.
+- `update(goals, { set: { user_id: <victim> } })` and `update(milestones, { set: { goal_id: <victim's goal> } })` throw on the forbidden-keys check.
+- A soft-deleted user's `insert` throws (live-user guard) — writes are rejected, not just reads emptied.
+- `getSelf()` returns the own row (null when soft-deleted); `updateSelf({ tier })` / `({ deleted_at })` / `({ email })` throw.
+- `scopedDb(userA).count(goals)` returns only user A's goal count even if user B has goals in the table.
 - `posthog-node` capture for a test event appears in PostHog within 30s.
 - A signed-in user can hit a route handler that calls `scopedDb(auth.userId).select().from(goals)` and gets `[]`.
 - Visiting `/settings` returns the placeholder shell, not a 404.
 - All env vars in `.env.example` are documented and the app boots cleanly with them set.
-- CI lint rule rejects a PR that imports `unscopedDb` outside `lib/inngest/*` or `app/api/webhooks/*`.
+- CI check rejects: `unscopedDb` imports outside `lib/inngest/*` / `app/api/webhooks/*` / `lib/auth/lifecycle.ts` (Layer 1); raw-client imports outside the db plumbing modules (Layer 2); any `scopedDb(...)` call whose argument isn't `userId` / `auth().userId` — including parenthesized wrappers like `scopedDb(getUserId(req))`, which are denied by default rather than skipped (Layer 3); raw Neon/drizzle driver imports outside `db/client.ts` (Layer 4).

@@ -48,6 +48,7 @@
 - **Verified by integration test in Phase 3** (post unsigned payload → 400; post valid signed payload → 200).
 - Idempotent: handler records the event ID in a `stripe_webhook_events` log table and skips duplicates.
 - **No-op safely when the user is gone**: if any handler can't find the matching `users` row (hard-deleted in Phase 4 or never existed), it returns 200 immediately without modifying anything. Comment: "user row missing — treating as no-op (likely post-hard-delete window)."
+- **Selective guard for soft-deleted users** (`users.deleted_at IS NOT NULL` — the handlers run on `unscopedDb`, which has no soft-delete filter, so the check must be explicit): **keep syncing billing state** (`subscriptions.*`, `users.tier`) — during the 30-day grace window the Stripe subscription keeps evolving (period-end deletion, dunning), the idempotency log makes suppressed events unreplayable, and a recovered user must come back to accurate billing state, not a phantom paid tier. **Suppress side-effects**: no goal archiving jobs, no banners, no emails, no user-facing analytics events. Always return 200. (A blanket no-op was considered and rejected: it permanently desyncs tier for anyone who recovers after their subscription transitioned during grace.)
 
 ### Trial-with-card signup (Max only)
 
@@ -69,39 +70,44 @@
 ### Free-tier usage caps
 
 - Spec §10: 3 plan generations / month, 2 replans / month, intake unlimited.
-- **`checkAndIncrement` is a single atomic conditional UPDATE** to avoid TOCTOU races:
+- **`checkAndIncrement` is a single atomic conditional UPDATE** to avoid TOCTOU races — and it goes through `scopedDb` (usage_counters is a direct-ownership table; the counter columns aren't forbidden keys; the scoped `update` takes an extra `where` and a SQL `set` expression and returns the updated rows). No `unscopedDb` here — this is a single-user operation and the escape hatch is for cross-user work only:
 
   ```ts
   // lib/billing/usage.ts
-  async function checkAndIncrement(userId, kind: "plan" | "replan"): Promise<{ ok: true } | { ok: false; cap: number; used: number }> {
-    const user = await scopedDb(userId).select().from(users).limit(1).then(r => r[0])
-    if (user.tier !== "free") return { ok: true }
+  async function checkAndIncrement(userId, kind: "plan" | "replan"):
+    Promise<{ ok: true; periodStart: string } | { ok: false; cap: number; used: number }> {
+    const sdb = scopedDb(userId)
+    const user = await sdb.getSelf()
+    if (!user) throw new Error("no live user")          // soft-deleted users can't consume quota
+    if (user.tier !== "free") return { ok: true, periodStart: "" }
 
     await ensureCurrentMonthCounter(userId, user.timezone)
 
-    const column = kind === "plan" ? "plan_generations_used" : "replans_used"
+    const col = kind === "plan" ? usage_counters.plan_generations_used : usage_counters.replans_used
     const limit = kind === "plan" ? 3 : 2
+    const periodStart = currentPeriodStart(user.timezone)
 
-    const result = await unscopedDb.execute(sql`
-      UPDATE usage_counters
-      SET ${sql.identifier(column)} = ${sql.identifier(column)} + 1
-      WHERE user_id = ${userId}
-        AND period_start = ${currentPeriodStart(user.timezone)}
-        AND ${sql.identifier(column)} < ${limit}
-      RETURNING ${sql.identifier(column)} AS new_count
-    `)
-
-    if (result.rowCount === 0) {
-      const current = await unscopedDb.select().from(usageCounters)
-        .where(and(eq(usageCounters.user_id, userId), eq(usageCounters.period_start, currentPeriodStart(user.timezone))))
-        .limit(1).then(r => r[0])
-      return { ok: false, cap: limit, used: current[column] }
+    const updated = await sdb.update(usage_counters, {
+      set: { [col.name]: sql`${col} + 1` },
+      where: and(eq(usage_counters.period_start, periodStart), sql`${col} < ${limit}`),
+    })
+    if (updated.length === 0) {
+      const current = (await sdb.selectFrom(usage_counters, {
+        where: eq(usage_counters.period_start, periodStart),
+      }))[0]
+      return { ok: false, cap: limit, used: current?.[col.name] ?? limit }
     }
-    return { ok: true }
+    return { ok: true, periodStart }
   }
   ```
-  The `WHERE … AND used < limit` clause makes the increment atomic — concurrent requests cannot both pass the check.
-- **Retrofitted into Phase 1's `/api/ai/plan` and Phase 2's `/api/ai/replan` route handlers** as the first step inside the handler (before the Anthropic call). Phase 3 deliverable: edit both endpoints, replace the Phase 2 stub with the real call, and add the 402-style response shape: `{ error: "cap_hit", cap: 3, used: 3, kind: "plan_generations" }`.
+  The `WHERE … AND used < limit` clause makes the increment atomic — concurrent requests cannot both pass the check. (Only `ensureCurrentMonthCounter`'s `ON CONFLICT DO NOTHING` get-or-create exceeds the scoped surface; implement it as a scoped insert that catches the unique-constraint violation, or add a narrow scoped upsert helper — not by reaching for `unscopedDb`.)
+- **Quota refund on AI failure**: a `refundUsage(userId, kind, periodStart)` counterpart decrements the same counter when the metered AI call fails after a successful increment — a 502 must not burn a Free user's monthly quota. Rules:
+  - Decrement targets the **`periodStart` captured at increment time** (a failure straddling local midnight on the 1st must not decrement the new month's row).
+  - Guarded `AND ${col} > 0` — there is no DB CHECK ≥ 0, and a negative counter would silently satisfy `used < limit` forever; make double-refund bugs loud, not generous.
+  - The endpoints need an explicit **error-handling contract around the Anthropic call** (transport errors, timeouts, Zod-validation 502s — Phase 1's plan endpoint currently specifies none) so the refund has a hook for every failure class. Refund transport/availability failures unconditionally; for repeated Zod-validation failures, rate-limit the refund (model output is prompt-influenced — refund-on-every-failure converts the cap into "3 successes plus unlimited failed Anthropic spend").
+  - The failure path also marks the stranded `replan_proposals` row (created `pending` before generation) as failed/deleted rather than leaving it dangling.
+  - Applies to **every** metered caller: `/api/ai/plan`, `/api/ai/replan` from check-ins, and replans with `trigger='structural_edit'` including archived-goal Restore.
+- **Retrofitted into Phase 1's `/api/ai/plan` and Phase 2's `/api/ai/replan` route handlers** as the first step inside the handler (before the Anthropic call). Phase 3 deliverable: edit both endpoints, replace the Phase 2 stub with the real call, add the failure-path refund, and add the 402-style response shape: `{ error: "cap_hit", cap: 3, used: 3, kind: "plan_generations" }`.
 - Inngest cron `resetMonthlyUsageCounters` (registered in Phase 2 as a no-op): body now finds users whose local-month just started in the last hour and creates the new `usage_counters` row (idempotent via the `(user_id, period_start)` unique constraint).
 
 ### Upgrade prompt on cap hit
@@ -142,13 +148,28 @@
   1. Write the selection to `subscriptions.pending_archive_goal_ids` (jsonb array of goal IDs to archive) and `subscriptions.pending_archive_decided_at = now()`.
   2. Call `stripe.subscriptions.update(subId, { cancel_at_period_end: true })`. Stripe will charge $0 and stop billing at trial-end.
   3. Set `subscriptions.canceled_at = now()` (write-once — schema enforces).
-  4. PostHog: `subscription_canceled { tier: "max", reason: "user_cancel" }`.
+  4. PostHog: `subscription_canceled { tier: "max", reason: "user_cancel", billing_period }`. **This is the event's only user-cancel fire** — at the decision moment, never again at trial-end (see taxonomy note in Phase 5; `subscription_resumed` is the compensating event for users who cancel then resume, so churn analysis nets the two).
 - **No goal is archived at click-time.** All goals remain `active`, the user retains Max-tier (5-goal cap, full AI access) through trial-end.
 - If the user resumes Max (clicks "Keep Max" before trial-end): handler calls `stripe.subscriptions.update(subId, { cancel_at_period_end: false })`, clears `pending_archive_goal_ids` and `pending_archive_decided_at`, sets `canceled_at = NULL` (the single exception to write-once — explicit user reversal). PostHog: `subscription_resumed { tier, billing_period }`.
-- At trial-end (cancel-during-trial path only): Stripe fires `customer.subscription.deleted` (subscription ends without charge because `cancel_at_period_end=true` was set at click-time). Webhook handler distinguishes user-cancel vs payment-failure by inspecting the local `subscriptions.cancel_at_period_end` flag (true → user canceled; false → payment failed, see Payment-failure section below).
-  - User-cancel path: sets `users.tier = 'free'`, `subscriptions.status = 'canceled'`.
-  - Inngest function `applyPendingArchive` runs immediately (triggered via `inngest.send`): for each goal_id in `pending_archive_goal_ids`, sets `status='archived'`, `archived_at=now()`, `archive_reason='downgrade_selection'`. Clears `pending_archive_goal_ids`. PostHog: `subscription_canceled { tier: "max", reason: "user_cancel", billing_period }`.
+- At trial-end on this path, Stripe fires `customer.subscription.deleted` (subscription ends without charge because `cancel_at_period_end=true` was set at click-time). The handler routes it per the **deleted-event routing** rules below, lands on the user-cancel branch, and:
+  - Sets `users.tier = 'free'`, `subscriptions.status = 'canceled'`.
+  - Inngest function `applyPendingArchive` runs immediately (triggered via `inngest.send`):
+    1. For each goal_id in `pending_archive_goal_ids`: archive it — **skipping any goal that is no longer `active`** (a goal completed or already archived mid-trial keeps its own `status`/`archive_reason`; never clobber `completed` back to `archived`). Sets `status='archived'`, `archived_at=now()`, `archive_reason='downgrade_selection'` on the ones it archives. Missing IDs are skipped idempotently.
+    2. **Defensive re-validation**: if `count(active goals)` still exceeds the target tier cap — the user canceled with ≤cap goals (empty pending list) or created/restored goals during the remaining trial week — archive down to the cap using the same 30-day activity heuristic as `applyPaymentFailureArchive`, with `archive_reason='downgrade_selection'` (its banner copy is accurate: the goal *was* archived when the trial ended). Tag these with a PostHog property (`heuristic: true`) so system-chosen archives are measurable against user-chosen ones.
+    3. Clears `pending_archive_goal_ids`.
+  - No PostHog `subscription_canceled` here — it fired once, at cancel-click.
   - Surfaces the trial-expired banner on next login (see below).
+
+### Deleted-event routing (customer.subscription.deleted)
+
+Every immediate cancellation produces a `deleted` event with `cancel_at_period_end=false`, so the local flag alone cannot distinguish paths. The handler routes **in this order**:
+
+1. **Superseded** (`subscriptions.superseded_at IS NOT NULL`): this deletion is one half of a tier transition (Max→Pro cancel+create). Sync `subscriptions.status='canceled'` and stop — no tier write, no archive, no events. The replacement subscription's `created` webhook owns `users.tier`.
+2. **Payment failure** (`event.data.object.cancellation_details.reason === 'payment_failed'` — Stripe's own discriminator, and the only signal that means dunning exhausted): the payment-failure path below.
+3. **User cancel** (local `cancel_at_period_end = true`): the trial-end / period-end path above.
+4. **Anything else** (refund-route downgrade, account-deletion cancel, manual dashboard cancel): plain sync — `subscriptions.status='canceled'`, `users.tier='free'` *unless another live subscription row exists*, **never** an archive job and **never** a `payment_failed` event or banner. The flow that initiated the cancel owns its own goal-cap reconciliation and analytics.
+
+`superseded_at` lifecycle: set by the transition server action on the old row *synchronously at the cancel API call* (together with `status='canceled'` — see Max → Pro below); cleared if the transition aborts before the new subscription activates. A stale marker would no-op a future legitimate cancel, so abort paths must clean up. Enumerated `deleted`-event producers, for the test matrix: trial-end user-cancel, period-end paid cancel, dunning exhaustion, Max→Pro supersede, refund-route downgrade, account-deletion (Phase 4).
 
 **Paid-tier cancellation** (Pro → Free, Max → Free where `active_goals > 3`) uses the same screen but **executes archival at click-time** (no trial to preserve access during). Implementation: same screen, but selection writes to `pending_archive_goal_ids` only when `status='trialing'`; otherwise archive runs immediately with `archive_reason='downgrade_selection'`.
 
@@ -169,7 +190,7 @@ Silent trial expiry where the card charge **fails** is the only no-cancellation 
 - **Stripe Smart Retries / dunning** takes over: Stripe retries the charge over several days (default ~3 weeks, configurable in the Stripe dashboard) and sends card-update emails to the customer directly. We do not duplicate those emails.
 - We also send one in-app banner: "Your card couldn't be charged for your Max plan. Update it from billing settings — your trial features stay active while Stripe retries." (No threat language; this is operational.)
 - If the customer updates their card and the retry succeeds → `customer.subscription.updated` to `active` → `trial_converted { tier, billing_period }` fires (the eventual conversion path).
-- If dunning is exhausted → Stripe fires `customer.subscription.deleted` with `cancellation_details.reason='payment_failed'` (and the local `subscriptions.cancel_at_period_end` flag is false — distinguishing this from user-cancel). Webhook handler:
+- If dunning is exhausted → Stripe fires `customer.subscription.deleted` with `cancellation_details.reason='payment_failed'` — **this reason field is the sole discriminator for the payment-failure branch** (per the deleted-event routing rules above; the local `cancel_at_period_end` flag is false on *every* immediate cancel and proves nothing). Webhook handler:
   - Sets `users.tier='free'`, `subscriptions.status='canceled'`.
   - Triggers Inngest function `applyPaymentFailureArchive` via `inngest.send`.
   - PostHog: `subscription_canceled { tier: "max", reason: "payment_failed", billing_period }`.
@@ -188,8 +209,9 @@ Silent trial expiry where the card charge **fails** is the only no-cancellation 
 ### Trial-expired banner
 
 - Surfaced on next login when any of the user's goals has `archive_reason IN ('trial_expired_no_action','downgrade_selection')` and `archive_notice_dismissed_at IS NULL`.
-- Copy varies by reason:
-  - `downgrade_selection`: "{goal_title} was archived when your trial ended. Restore it anytime by upgrading."
+- Copy varies by reason **and by whether the cancellation was a trial** (`archive_reason` alone is reused by paid-tier cancels — keying copy on it unconditionally would tell a year-long Pro subscriber their "trial" ended):
+  - `downgrade_selection`, archived at trial-end: "{goal_title} was archived when your trial ended. Restore it anytime by upgrading."
+  - `downgrade_selection`, archived on a paid-tier cancel/refund: "{goal_title} was archived when your plan changed. Restore it anytime by upgrading."
   - `trial_expired_no_action` (payment-failure path): "{goal_title} was archived when your Max plan didn't renew. Update your card and re-upgrade to restore it."
 - Single dismiss button → sets `goals.archive_notice_dismissed_at = now()` for that goal. Banner does not reappear.
 - If multiple goals share this state, banner cycles or lists them concisely.
@@ -219,7 +241,11 @@ When a user clicks "Restore" on an archived goal — available from the goals li
 
 - Goal cap is the same (5 → 5), so no archive needed.
 - Show a "what you're losing" screen: AI mentor (when v2 ships); preserved access to plan generation, replans, and intake. Single confirm.
-- Trial users transitioning Max → Pro: cancel the Max trial subscription (no charge), create a Pro subscription with immediate charge. No grace period; user moves to Pro now.
+- Trial users transitioning Max → Pro: cancel the Max trial subscription (no charge), create a Pro subscription with immediate charge. No grace period; user moves to Pro now. **Transition mechanics (ordering is load-bearing):**
+  1. The server action marks the local Max row `superseded_at = now()` **and** `status='canceled'` synchronously at the Stripe cancel API call — not when the webhook arrives. Two reasons: the `created`/`deleted` webhook pair arrives in arbitrary order (without the marker, the Max `deleted` event would route down a cancel branch and clobber the freshly-set Pro tier — or worse, the payment-failure branch, archiving a paying customer's goals); and the partial unique index `subscriptions(user_id) WHERE status IN ('trialing','active')` would reject the Pro row's insert while the Max row still reads `trialing`.
+  2. Create the Pro subscription. If creation/charge **fails or is abandoned**, clear `superseded_at`, un-cancel or recreate Max where possible, and keep `users.tier` untouched until one subscription is definitively live — the user must never end up tierless-but-paying or Max-for-free.
+  3. The Pro `created` webhook sets `users.tier='pro'`; the Max `deleted` webhook no-ops via the superseded rule.
+  - *Implementation option to evaluate*: for a trialing Max→Pro, Stripe supports updating the existing subscription in place (swap price, end trial) — fires `customer.subscription.updated` instead of `deleted`, no second subscription, no ordering race, no index collision. If it proves clean in the Stripe test clock, prefer it; `superseded_at` stays in the schema regardless for any cancel+create path.
 
 ### Billing settings
 
@@ -231,14 +257,17 @@ When a user clicks "Restore" on an archived goal — available from the goals li
   - "Cancel subscription" → routes to downgrade flow above.
   - "Manage payment method" → Stripe Customer Portal session for payment methods only.
   - **Refund policy displayed in-app, not just in ToS** (spec §10): "Monthly subscriptions are not refundable. Annual subscriptions are eligible for a prorated refund within 30 days of purchase. Request a refund below if eligible."
-  - "Request refund" button visible when `billing_period='annual'` AND `now() < current_period_start + 30 days`. **Server-side re-check** in the refund route handler before calling `stripe.refunds.create`: if `subscription.billing_period !== 'annual'` or `now() >= current_period_start + 30 days`, return 403 regardless of how the request was crafted. On valid request: server action computes prorated amount, calls `stripe.refunds.create({ payment_intent, amount })`, downgrades the subscription.
+  - "Request refund" button visible when `billing_period='annual'` AND `status='active'` AND `now() < current_period_start + 30 days` (a trialing annual sub has no charge to refund — no button). **Server-side re-check** in the refund route handler before calling `stripe.refunds.create`: same conditions, plus no prior refund on the charge; any failure returns 403 regardless of how the request was crafted. On valid request, in order:
+    1. **Goal-cap reconciliation first**: the refund downgrade lands the user on Free — if `active_goals > 3`, route through the downgrade-and-archive selection screen *before* anything irreversible. The refund path must not bypass the reconciliation every other downgrade gets.
+    2. Compute the prorated amount, call `stripe.refunds.create({ payment_intent, amount })`.
+    3. Cancel the subscription immediately and sync local state in the same action: `subscriptions.status='canceled'`, `users.tier='free'`, archive the selection from step 1 with `archive_reason='downgrade_selection'`. The resulting `customer.subscription.deleted` webhook routes to the plain-sync branch of the deleted-event routing (no archive job, no payment-failure misclassification — this user got money back, not a card decline). PostHog: `subscription_canceled { tier, reason: "user_cancel", billing_period: "annual" }` fires here (this is the decision moment for this path).
 
 ### Stripe webhooks
 
 - `/api/webhooks/stripe` handles: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, `invoice.payment_failed`.
 - Idempotent: each webhook records the event ID and skips duplicates.
 - Updates `subscriptions` row + `users.tier` accordingly.
-- All handlers no-op safely if no `users` row matches the customer.
+- All handlers no-op safely if no `users` row matches the customer; for **soft-deleted** users they sync billing state but suppress side-effects (selective guard above).
 
 ## Phase-specific context
 
@@ -287,10 +316,12 @@ End-to-end:
 5. Cancel during trial → downgrade-and-archive screen shows 4 goals; select 3 to keep, archive 1. Primary button proceeds (no second confirmation). **Verify all 4 goals remain `active` immediately after click.** `subscriptions.cancel_at_period_end=true`, `canceled_at=now`, `pending_archive_goal_ids=['<goal_id>']`.
 6. Mid-trial, return to billing settings → "Resume Max" → all pending state cleared, subscription continues. Re-cancel and re-select.
 7. Trigger trial-reminder seam at `trial_end - 24h` → banner appears in app + Resend email queued. `subscriptions.trial_reminder_sent_at` set.
-8. Fast-forward to `trial_end` (test seam) → `customer.subscription.deleted` webhook fires → `applyPendingArchive` runs → the 1 pending goal flips to `archived` with `archive_reason='downgrade_selection'`, the other 3 stay `active`, `users.tier='free'`, `subscriptions.status='canceled'`, `canceled_at` unchanged from step 5.
+8. Fast-forward to `trial_end` (test seam) → `customer.subscription.deleted` webhook fires → `applyPendingArchive` runs → the 1 pending goal flips to `archived` with `archive_reason='downgrade_selection'`, the other 3 stay `active`, `users.tier='free'`, `subscriptions.status='canceled'`, `canceled_at` unchanged from step 5. PostHog `subscription_canceled` does **not** fire again here (exactly one fire, at step 5's click).
+8.1. **Defensive re-validation path**: cancel during trial with exactly 3 goals (no archive screen, empty pending list), then create 2 more during the trial week. Fast-forward to `trial_end` → `applyPendingArchive`'s re-validation archives down to 3 via the 30-day activity heuristic with `archive_reason='downgrade_selection'` and the `heuristic: true` property; trial-expired banner shows for the archived 2.
+8.2. **Completed-goal protection**: select a goal for pending archive, mark it complete mid-trial → at trial-end it keeps `status='completed'` / `archive_reason='user_action'` — not clobbered to archived.
 9. Re-upgrade to Pro via "Switch to Pro" → Stripe Checkout with no trial → webhook `customer.subscription.created` (status=active) → `subscriptions` row created, `users.tier='pro'`, PostHog `subscription_started { tier: "pro", billing_period: "monthly" }`.
 9.5. From the goals list, click "Restore" on the archived goal → replan diff UI opens with `trigger='structural_edit'`, payload `{ type: "reactivation", restore_date: now() }`. AI proposes shifted milestone dates relative to `now()`; accept → goal flips to `status='active'`, `archived_at=NULL`, `archive_reason=NULL`. `checkAndIncrement('replan')` was consumed (verify the counter incremented for a Free user; verify Pro/Max passes through).
-10. As Pro annual user, request refund within 30 days → server-side re-check passes → prorated refund issued via Stripe API, subscription downgrades.
+10. As Pro annual user with 5 active goals, request refund within 30 days → the downgrade-and-archive selection screen appears **before** the refund completes; after selection: prorated refund issued via Stripe API, subscription canceled immediately, `users.tier='free'`, exactly 3 goals remain active, and the resulting `deleted` webhook routes to plain-sync (no payment-failure banner, no archive job).
 11. As Pro annual user past day 30, POST directly to the refund route → server returns 403.
 12. As monthly user, request refund → button not shown; POST directly → server returns 403.
 13. Max → Pro downgrade: "what you're losing" screen shown, no archive UI (goal cap unchanged).
@@ -305,6 +336,10 @@ Automated (Vitest):
 
 - `checkAndIncrement` enforces 3 plan / 2 replan limits for Free; passes for Pro/Max.
 - `checkAndIncrement` under concurrent N=10 calls at `used=0`, limit=3: exactly 3 succeed, 7 fail. (Atomicity test.)
+- **Quota refund**: a failed AI call after a successful increment leaves the counter net unchanged (`refundUsage` decrements the captured-period row); the decrement floors at 0 (`AND col > 0`) — a double-refund cannot go negative; the refund fires for `structural_edit`/Restore replans too.
+- **Deleted-event routing**: a `deleted` event for a superseded row syncs `status='canceled'` and touches nothing else; only `cancellation_details.reason='payment_failed'` triggers `applyPaymentFailureArchive`; a refund-initiated deletion routes to plain-sync (no archive job, no `payment_failed` event); `subscription_canceled` fires exactly once per cancel decision.
+- **`applyPendingArchive`**: skips non-active pending IDs (completed goals keep their status/reason); re-validates the active count at execution and heuristic-archives down to the cap when exceeded.
+- **Soft-deleted selective guard**: a subscription event for a soft-deleted user updates `subscriptions.status`/`users.tier` but produces no archive job, banner flag, email, or analytics event; returns 200.
 - Monthly counter reset creates new rows at month boundary; doesn't disturb other users' counters.
 - Goal-cap enforcement on save endpoint blocks Free user trying to save a 4th active goal.
 - Downgrade-and-archive selection validity: cannot proceed with > target_cap kept.

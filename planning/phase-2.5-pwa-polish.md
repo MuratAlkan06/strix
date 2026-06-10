@@ -28,6 +28,8 @@
   - **API routes**: `NetworkOnly`. No offline mutations in MVP — show a clear "offline" state on the check-off action; queue is v2 territory.
   - **AI endpoints**: `NetworkOnly` and excluded from any cache. AI responses must never be replayed.
 - Versioning: cache name includes a build hash so old caches are evicted on deploy.
+- **Cached dashboard JSON carve-out**: "last-loaded JSON for today's tasks" (offline shell below) is authenticated user data, so it cannot ride the `NetworkOnly` API rule — name its storage mechanism explicitly (a dedicated SW data cache via `cache.put`, or IndexedDB) so the purge below can target it. Do not let it land in localStorage implicitly.
+- **Session-end purge (shared-device safety)**: on sign-out — and on session expiry / remote revocation when detected — clear **all SW caches and the client-side dashboard data store** before the redirect completes (`await caches.keys() → caches.delete(...)`; a navigation mid-purge can cut it short). The next user on a shared device must not see the previous user's dashboard offline. Account deletion (Phase 4) routes through this same purge. Full-clear also evicts the user-agnostic app shell — accepted for MVP (one static re-download) over per-user cache partitioning.
 
 ### iOS standalone polish
 
@@ -92,7 +94,8 @@ Pick the one that's currently maintained against Next.js 15 App Router. As of ea
 7. From the installed app, navigate dashboard → goal detail → back. No browser back button visible; no URL bar.
 8. Force-quit the app, reopen → resumes at the dashboard (not on the sign-in page) for an authenticated session.
 9. Toggle airplane mode → dashboard renders from cache with "Offline" indicator; check-off button disabled with tooltip; no crash.
-10. Repeat 6–9 on Pixel 8 / Galaxy S22 Chrome.
+9.5. Sign out, then toggle airplane mode and reopen the app → no prior user's dashboard data renders (caches and the dashboard data store are empty); the offline screen or sign-in shell shows instead.
+10. Repeat 6–9.5 on Pixel 8 / Galaxy S22 Chrome.
 
 **Soft signal (not a formal gate):**
 
