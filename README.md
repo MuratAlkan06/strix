@@ -144,6 +144,13 @@ src/
 │   │   └── webhooks/clerk/
 │   │       ├── route.ts             # svix-verified Clerk webhook + signup analytics
 │   │       └── route.test.ts        # signature-gate integration tests
+│   ├── (check-in)/
+│   │   ├── layout.tsx               # authenticated check-in-shell segment
+│   │   └── check-in/
+│   │       ├── page.tsx             # /check-in — weekly check-in form
+│   │       ├── check-in-form.tsx    # feeling + notes + replan goal picker (client)
+│   │       ├── check-in-model.ts    # pure view-model: cap math, default selection
+│   │       └── actions.ts           # server actions: submit / skip (upsert + proposals)
 │   ├── (dashboard)/
 │   │   ├── layout.tsx               # authenticated product-shell segment
 │   │   └── dashboard/
@@ -202,6 +209,7 @@ src/
 │   ├── horizon-header.tsx           # full-bleed dashboard header (scene + greeting scrim)
 │   ├── emblem.tsx                   # the Strix owl mark (flat geometric, no face)
 │   ├── goal-chip.tsx                # goal dot + name (color never the sole carrier)
+│   ├── upgrade-modal.tsx            # free-cap dialog (no upgrade CTA until Phase 3)
 │   ├── countdown-stat.tsx           # tabular number + label primitive
 │   └── empty-dashboard.tsx          # empty-state composition (pre-dawn scene + CTA + tiles)
 ├── db/
@@ -215,7 +223,8 @@ src/
 ├── lib/
 │   ├── ai/                          # Anthropic chokepoint (ADR-0001): client, models,
 │   │                                #   intake, plan, prompts, schemas, canonicalize,
-│   │                                #   session, transcript, safety-flags, today, log
+│   │                                #   session, transcript, safety-flags, today, log,
+│   │                                #   replan-diff (the Zod-typed proposal diff)
 │   ├── analytics/{server,client}.ts # PostHog wrappers
 │   ├── inngest/
 │   │   ├── client.ts                # Inngest client
@@ -226,6 +235,7 @@ src/
 │   ├── goal-colors.ts               # color assignment + the active-goal cap
 │   ├── goal-progress.ts             # milestone-derived progress + next milestone
 │   ├── goal-seeds.ts                # empty-state tiles + the {climb,…} seed whitelist
+│   ├── limits.ts                    # free-tier usage caps (SPEC §10)
 │   └── utils.ts                     # shadcn cn() helper
 └── proxy.ts                         # clerkMiddleware + public-route whitelist
                                      # (Next 16 renamed middleware.ts → proxy.ts)
