@@ -86,7 +86,7 @@
 
 ### Goal detail
 
-- Route: `app/(goals)/[id]/page.tsx`.
+- Route: `app/(goals)/goals/[id]/page.tsx`.
 - Sections: header (title, color, intensity control), daily habits, weekly sessions, milestones (timeline), equipment.
 - All sections editable: add/remove/reschedule items inline.
 - **Intensity control**: per PLAN.md §5 flag #2 + flag #6 resolution. When `goals.intensity_override` is unset, the control shows the goal's effective intensity — its intake `confirmed_intensity` — as the active selection, with copy "Follows your intake intensity" (not "account preference": the chain prefers the intake pick). When the user changes it, sets `goals.intensity_override`; `intensity_override` is written **only** on explicit change here, never at goal creation.
