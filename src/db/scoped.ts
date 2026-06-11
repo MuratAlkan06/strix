@@ -444,6 +444,9 @@ function bindScoped(db: Db, userId: string): ScopedBase {
       // (TableLikeHasEmptySelection) that TS cannot resolve for an unresolved
       // generic T — upcast to concrete PgTable; the return cast below already
       // pins the precise row type.
+      // The wide upcast is deliberate: the narrower `typeof table & PgTable`
+      // was tried (2026-06-11) and fails TS2345 — TableLikeHasEmptySelection
+      // stays unresolvable over a live generic. Do not retry.
       return db
         .select()
         .from(table as PgTable)
@@ -455,6 +458,8 @@ function bindScoped(db: Db, userId: string): ScopedBase {
       const where = opts?.where ? (and(scope, opts.where) as SQL) : scope;
       // Same drizzle 0.44+ generic-T upcast as selectFrom; the result shape
       // ({ value }) never depends on the table's row type.
+      // Deliberate wide upcast — `typeof table & PgTable` fails TS2345 (see
+      // selectFrom); do not retry.
       const rows = await db
         .select({ value: count() })
         .from(table as PgTable)
