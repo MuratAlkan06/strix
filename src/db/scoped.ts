@@ -18,6 +18,9 @@
  *   - transaction(fn) runs fn inside a single Postgres transaction whose
  *     callback surface is the same scoped binding (ScopedTx) — every
  *     statement inside keeps all of the above; a throw rolls everything back.
+ *     ScopedTx additionally exposes lockScope(namespace), a per-user advisory
+ *     transaction lock for serializing concurrent same-user work (the key
+ *     embeds the scoped userId, so a user can only lock their own scope).
  *
  * Direct-ownership tables (filter on `user_id = userId`):
  *   goals, goal_drafts, usage_counters, weekly_check_ins, subscriptions,
@@ -319,13 +322,35 @@ const SELF_UPDATE_FORBIDDEN = [
   "created_at",
 ] as const;
 
+/** The scoped surface shared by scopedDb and its transaction binding. */
+type ScopedBase = Omit<ScopedDb, "transaction">;
+
 /**
- * The scoped surface available INSIDE scopedDb().transaction — identical to
- * ScopedDb minus `transaction` itself (no nesting). Every statement issued on
- * it carries the same ownership + soft-delete discipline as outside a
- * transaction: the binding is per-executor, never per-statement.
+ * The scoped surface available INSIDE scopedDb().transaction — ScopedDb minus
+ * `transaction` itself (no nesting), plus the transaction-only `lockScope`.
+ * Every statement issued on it carries the same ownership + soft-delete
+ * discipline as outside a transaction: the binding is per-executor, never
+ * per-statement.
  */
-export type ScopedTx = Omit<ScopedDb, "transaction">;
+export interface ScopedTx extends ScopedBase {
+  /**
+   * Serialize concurrent work for the scoped user: takes a Postgres advisory
+   * TRANSACTION lock (pg_advisory_xact_lock) keyed on a stable 64-bit hash of
+   * `namespace:userId`, blocking until any concurrent holder of the same key
+   * commits or rolls back. Released automatically at transaction end — no
+   * unlock call exists or is needed.
+   *
+   * Ownership discipline: the scoped userId is baked into the key, so a
+   * caller can only ever serialize against ITSELF — never take (or contend
+   * on) another user's lock. `namespace` must be a compile-time constant
+   * (it is parameterized, so injection-safe regardless, but a user-influenced
+   * namespace would fragment the serialization it exists to provide).
+   *
+   * Transaction-only by design: an advisory xact lock outside an explicit
+   * transaction spans a single statement and serializes nothing.
+   */
+  lockScope(namespace: string): Promise<void>;
+}
 
 export interface ScopedDb {
   readonly userId: string;
@@ -381,7 +406,7 @@ export interface ScopedDb {
  * scopedDb().transaction. All guarantees live here, parameterized only by
  * WHICH connection runs the statements.
  */
-function bindScoped(db: Db, userId: string): ScopedTx {
+function bindScoped(db: Db, userId: string): ScopedBase {
   return {
     userId,
 
@@ -619,7 +644,26 @@ export function scopedDb(userId: string): ScopedDb {
     ...bindScoped(internalDb, userId),
 
     async transaction(fn) {
-      return withTransactionalDb((tx) => fn(bindScoped(tx, userId)));
+      return withTransactionalDb((tx) =>
+        fn({
+          ...bindScoped(tx, userId),
+
+          // Transaction-only: the lock key embeds the bound userId, so the
+          // scoped user can only serialize against themselves (see the
+          // ScopedTx doc). hashtextextended gives a stable bigint key for
+          // pg_advisory_xact_lock; the lock releases at COMMIT/ROLLBACK.
+          async lockScope(namespace: string) {
+            if (typeof namespace !== "string" || namespace.trim().length === 0) {
+              throw new ScopedDbError(
+                "scopedDb.lockScope: namespace must be a non-empty constant string.",
+              );
+            }
+            await tx.execute(
+              sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${namespace}:${userId}`}::text, 0))`,
+            );
+          },
+        }),
+      );
     },
   };
 }

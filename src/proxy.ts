@@ -17,7 +17,9 @@ const isPublicRoute = createRouteMatcher([
   "/playground(.*)",
 ]);
 
-const isIntakeRoute = createRouteMatcher(["/goals/new"]);
+// /goals/new and its draft-bootstrap Route Handler both accept ?seed= — the
+// whitelist gate must cover both entrances.
+const isIntakeRoute = createRouteMatcher(["/goals/new", "/goals/new/bootstrap"]);
 
 export default clerkMiddleware(async (auth, req) => {
   // Seed whitelist enforced at the edge, BEFORE auth: a non-empty,

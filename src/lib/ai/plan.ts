@@ -22,6 +22,7 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import { getClient } from "./client";
 import { MODEL_SONNET } from "./models";
 import { planSystem } from "./prompts/plan";
+import { todayIso } from "./today";
 import {
   planDraftSchema,
   planOutputFormat,
@@ -63,9 +64,11 @@ export interface GeneratePlanArgs {
 }
 
 /**
- * Build the single user message: the intake summary as JSON plus the confirmed
- * intensity called out explicitly (the phase doc's prompt sketch). All
- * per-request data lives here, never in the cached system block.
+ * Build the single user message: today's date (the calendar anchor — without
+ * it the model assumes its training-era year and dates milestones into the
+ * past), the intake summary as JSON, plus the confirmed intensity called out
+ * explicitly (the phase doc's prompt sketch). All per-request data lives
+ * here, never in the cached system block.
  */
 export function buildPlanMessages(args: GeneratePlanArgs): MessageParam[] {
   const { intakeSummary } = args;
@@ -74,6 +77,8 @@ export function buildPlanMessages(args: GeneratePlanArgs): MessageParam[] {
     {
       role: "user",
       content:
+        `Today's date: ${todayIso()}. Every plan date (milestones, equipment ` +
+        `deadlines) must fall after this date, paced toward the target.\n\n` +
         `Intake summary (JSON):\n${JSON.stringify(intakeSummary, null, 2)}\n\n` +
         `Confirmed intensity: ${String(intensity)}\n\n` +
         `Generate the plan.`,

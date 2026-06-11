@@ -31,7 +31,14 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { scopedDb, ScopedDbError } from "./scoped";
 import { unscopedDb } from "@/db/unscoped";
-import { goals, recurring_tasks, task_completions, users } from "./schema";
+import {
+  goal_drafts,
+  goals,
+  recurring_tasks,
+  task_completions,
+  users,
+} from "./schema";
+import { mintOrReuseDraft } from "@/app/(goals)/goals/new/bootstrap/single-flight";
 
 // vitest.setup.ts assigns this placeholder when DATABASE_URL is unset; a
 // placeholder DB is "no DB" for gating purposes.
@@ -69,6 +76,9 @@ function isUniqueViolation(err: unknown, depth = 0): boolean {
 /** Delete every fixture row, children before parents (RESTRICT FKs).
  *  Idempotent — safe to run after a partial seed. */
 async function cleanup() {
+  await unscopedDb
+    .delete(goal_drafts)
+    .where(inArray(goal_drafts.user_id, FIXTURE_USERS));
   await unscopedDb
     .delete(task_completions)
     .where(inArray(task_completions.user_id, FIXTURE_USERS));
@@ -120,6 +130,10 @@ run("scopedDb (integration, live DB)", () => {
     // Residue proof: the dev DB must hold ZERO fixture rows after this file,
     // pass or fail. (cleanup() above runs even when a test failed.)
     const residue = {
+      drafts: await unscopedDb
+        .select({ id: goal_drafts.id })
+        .from(goal_drafts)
+        .where(inArray(goal_drafts.user_id, FIXTURE_USERS)),
       users: await unscopedDb
         .select({ id: users.id })
         .from(users)
@@ -139,7 +153,13 @@ run("scopedDb (integration, live DB)", () => {
             .where(eq(recurring_tasks.id, taskA))
         : [],
     };
-    expect(residue).toEqual({ users: [], goals: [], completions: [], tasks: [] });
+    expect(residue).toEqual({
+      drafts: [],
+      users: [],
+      goals: [],
+      completions: [],
+      tasks: [],
+    });
   }, 60_000);
 
   // -------------------------------------------------------------------------
@@ -280,4 +300,40 @@ run("scopedDb (integration, live DB)", () => {
       expect(stored).toEqual([]);
     }, 30_000);
   });
+
+  // -------------------------------------------------------------------------
+  // Gate re-verification fix: bootstrap single-flight. Two PARALLEL mints for
+  // the same user+seed (the tile-click double-request) must serialize on the
+  // per-user advisory xact lock (ScopedTx.lockScope) and land exactly ONE
+  // goal_drafts row — the loser reuses the winner's token. Two separate
+  // websocket transactions genuinely contend on the Postgres lock here.
+  // -------------------------------------------------------------------------
+  describe("goal_drafts bootstrap single-flight (advisory xact lock)", () => {
+    it("two parallel mints land exactly one row and agree on the token", async () => {
+      const [tokenA, tokenB] = await Promise.all([
+        mintOrReuseDraft(scopedDb(USER_A), "climb"),
+        mintOrReuseDraft(scopedDb(USER_A), "climb"),
+      ]);
+      expect(tokenA).toBe(tokenB);
+
+      const rows = await unscopedDb
+        .select({ token: goal_drafts.session_token, seed: goal_drafts.seed })
+        .from(goal_drafts)
+        .where(inArray(goal_drafts.user_id, [USER_A]));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.token).toBe(tokenA);
+      expect(rows[0]!.seed).toBe("climb");
+    }, 60_000);
+
+    it("a different seed is not reused — it mints its own row", async () => {
+      const token = await mintOrReuseDraft(scopedDb(USER_A), "language");
+      const existing = await unscopedDb
+        .select({ token: goal_drafts.session_token })
+        .from(goal_drafts)
+        .where(inArray(goal_drafts.user_id, [USER_A]));
+      expect(existing).toHaveLength(2);
+      expect(existing.map((r) => r.token)).toContain(token);
+    }, 30_000);
+  });
+
 });

@@ -1,14 +1,19 @@
 /**
- * draft.ts — server-side goal-draft bootstrap for /goals/new.
+ * draft.ts — server-side goal-draft lookup for /goals/new.
  *
- * On first landing (no valid draft cookie) a fresh goal_drafts row is created
- * keyed by a random session_token, and the token is written to an HttpOnly
- * cookie. On a returning visit the cookie resolves the existing draft and the
- * transcript resumes. This keeps all intake state staged in goal_drafts (no
- * goal row exists until "Save goal" in a later slice).
+ * READ-ONLY by design: a Server Component render may read cookies but never
+ * set them (Next.js allows cookie writes only in Server Actions and Route
+ * Handlers — a render-time cookies().set() throws and 500s the page). First-
+ * landing draft CREATION therefore lives in the bootstrap Route Handler
+ * (./bootstrap/route.ts), where the goal_drafts insert and the HttpOnly
+ * cookie write happen together in a legal context. The page calls findDraft()
+ * and redirects to the bootstrap when nothing resolves; a returning visit
+ * resolves the existing draft from the cookie and the transcript resumes.
+ * All intake state stays staged in goal_drafts (no goal row exists until
+ * "Save goal" in a later slice).
  *
- * It is only ever imported by the server page (it reads cookies and touches the
- * scoped DB) — every API it uses is server-only, so it cannot leak into a client
+ * Only ever imported by server code (it reads cookies and touches the scoped
+ * DB) — every API it uses is server-only, so it cannot leak into a client
  * bundle.
  */
 import { cookies } from "next/headers";
@@ -16,12 +21,7 @@ import { eq } from "drizzle-orm";
 
 import { scopedDb } from "@/db/scoped";
 import { goal_drafts } from "@/db/schema";
-import {
-  DRAFT_COOKIE_NAME,
-  DRAFT_COOKIE_MAX_AGE_SEC,
-  draftExpiresAt,
-  generateSessionToken,
-} from "@/lib/ai/session";
+import { DRAFT_COOKIE_NAME } from "@/lib/ai/session";
 import { asTranscript, type TranscriptTurn } from "@/lib/ai/transcript";
 import {
   asEventLog,
@@ -62,66 +62,34 @@ export interface ResolvedDraft {
 }
 
 /**
- * Resolve the draft for the current request: load the existing one from the
- * cookie, or create a fresh row (and set the cookie) on first landing.
+ * Resolve the draft for the current request from the session-token cookie, or
+ * null when there is no cookie or no matching row (first landing, or an
+ * expired/swept draft) — the page then redirects to the bootstrap Route
+ * Handler, which owns creation. No writes happen here.
  *
  * @param userId  Clerk userId (from auth()).
- * @param seed    Validated whitelisted seed (or null) — only applied on create.
  */
-export async function resolveDraft(
-  userId: string,
-  seed: string | null,
-): Promise<ResolvedDraft> {
+export async function findDraft(userId: string): Promise<ResolvedDraft | null> {
   const sdb = scopedDb(userId);
   const jar = await cookies();
   const token = jar.get(DRAFT_COOKIE_NAME)?.value;
+  if (!token) return null;
 
-  if (token) {
-    const rows = await sdb.selectFrom(goal_drafts, {
-      where: eq(goal_drafts.session_token, token),
-    });
-    const existing = rows[0];
-    if (existing) {
-      const log = asEventLog(existing.raw_transcript);
-      const pending = pendingFlag(log);
-      return {
-        id: existing.id,
-        seed: existing.seed,
-        transcript: asTranscript(existing.raw_transcript),
-        completed: existing.intake_summary_draft != null,
-        summary: asIntakeSummaryDraft(existing.intake_summary_draft),
-        pendingSafetyFlag: pending ? toFlagPayload(pending) : null,
-        planReady: existing.plan_draft != null,
-      };
-    }
-    // Cookie present but no matching row (expired/swept) — fall through to
-    // create a fresh draft below.
-  }
-
-  const newToken = generateSessionToken();
-  const inserted = await sdb.insert(goal_drafts, {
-    user_id: userId,
-    session_token: newToken,
-    seed,
-    expires_at: draftExpiresAt(),
+  const rows = await sdb.selectFrom(goal_drafts, {
+    where: eq(goal_drafts.session_token, token),
   });
-  const row = inserted[0]!;
+  const existing = rows[0];
+  if (!existing) return null;
 
-  jar.set(DRAFT_COOKIE_NAME, newToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: DRAFT_COOKIE_MAX_AGE_SEC,
-    path: "/",
-  });
-
+  const log = asEventLog(existing.raw_transcript);
+  const pending = pendingFlag(log);
   return {
-    id: row.id,
-    seed: row.seed,
-    transcript: [],
-    completed: false,
-    summary: null,
-    pendingSafetyFlag: null,
-    planReady: false,
+    id: existing.id,
+    seed: existing.seed,
+    transcript: asTranscript(existing.raw_transcript),
+    completed: existing.intake_summary_draft != null,
+    summary: asIntakeSummaryDraft(existing.intake_summary_draft),
+    pendingSafetyFlag: pending ? toFlagPayload(pending) : null,
+    planReady: existing.plan_draft != null,
   };
 }

@@ -15,7 +15,10 @@ import {
   asEventLog,
   decideFlag,
   decisionTurn,
+  duplicateFlagToolResultText,
+  findStagedMatch,
   isStagedSafetyFlag,
+  matchesConcern,
   mergeSafetyFlags,
   pendingFlag,
   stagedFlags,
@@ -273,5 +276,121 @@ describe("toFlagPayload", () => {
   it("carries exactly what the card needs", () => {
     const staged = stagedFlags(appendFlag([], FLAG_INPUT))[0]!;
     expect(toFlagPayload(staged)).toEqual(FLAG_INPUT);
+  });
+});
+
+describe("matchesConcern (duplicate-flag suppression predicate)", () => {
+  it("matches identical concerns regardless of case/whitespace", () => {
+    expect(
+      matchesConcern(
+        "the 20-pound target in two weeks",
+        "  The 20-Pound Target in Two Weeks ",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches the same concern restated with drifting phrasing", () => {
+    // number words ↔ digits, plurals, hyphenation, dropped articles
+    expect(
+      matchesConcern(
+        "the 20-pound target in two weeks",
+        "losing 20 pounds in 2 weeks",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches a tightened restatement (containment)", () => {
+    expect(
+      matchesConcern("the 20-pound target", "the 20-pound target in two weeks"),
+    ).toBe(true);
+  });
+
+  it("does NOT match genuinely distinct concerns", () => {
+    expect(
+      matchesConcern(
+        "the 20-pound target in two weeks",
+        "the six-week runway to a full marathon from a 5k base",
+      ),
+    ).toBe(false);
+    expect(
+      matchesConcern(
+        "the six-week runway to a full marathon from a 5k base",
+        "training through an existing knee injury",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("findStagedMatch", () => {
+  const decided: StagedSafetyFlag = {
+    type: "safety_flag",
+    ...FLAG_INPUT,
+    user_overrode: true,
+    decided_at: "2026-06-10T12:00:00.000Z",
+  };
+  const undecided: StagedSafetyFlag = {
+    type: "safety_flag",
+    concern: "the six-week runway to a full marathon from a 5k base",
+    alternative: "target a half in 6 weeks, full next cycle",
+    reasoning: "The mileage ramp is too steep to absorb.",
+    user_overrode: null,
+    decided_at: null,
+  };
+
+  it("finds a DECIDED staged flag by a rephrased concern", () => {
+    expect(
+      findStagedMatch([decided], "losing 20 pounds in 2 weeks"),
+    ).toBe(decided);
+  });
+
+  it("finds an UNDECIDED staged flag (same-response double-flag case)", () => {
+    expect(
+      findStagedMatch(
+        [decided, undecided],
+        "a six week runway to a marathon from a 5k base",
+      ),
+    ).toBe(undecided);
+  });
+
+  it("returns null when no staged concern matches", () => {
+    expect(findStagedMatch([decided], "training through a knee injury")).toBe(
+      null,
+    );
+  });
+});
+
+describe("duplicateFlagToolResultText", () => {
+  const base: StagedSafetyFlag = {
+    type: "safety_flag",
+    ...FLAG_INPUT,
+    user_overrode: null,
+    decided_at: null,
+  };
+
+  it("names the override decision and instructs continuation", () => {
+    const text = duplicateFlagToolResultText({
+      ...base,
+      user_overrode: true,
+      decided_at: "2026-06-10T12:00:00.000Z",
+    });
+    expect(text).toContain("already raised");
+    expect(text).toContain("proceed with the original goal");
+    expect(text).toContain("do not raise this concern again");
+    expect(text.toLowerCase()).toContain("continue the intake");
+  });
+
+  it("names the safer-alternative decision", () => {
+    const text = duplicateFlagToolResultText({
+      ...base,
+      user_overrode: false,
+      decided_at: "2026-06-10T12:00:00.000Z",
+    });
+    expect(text).toContain(FLAG_INPUT.alternative);
+  });
+
+  it("handles the undecided case (card already in front of the user)", () => {
+    const text = duplicateFlagToolResultText(base);
+    expect(text).toContain("already raised");
+    expect(text).toContain("decision card");
   });
 });

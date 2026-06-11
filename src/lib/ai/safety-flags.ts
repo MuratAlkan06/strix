@@ -166,6 +166,101 @@ export function decisionTurn(
 
 const normalize = (s: string) => s.trim().toLowerCase();
 
+// ---------------------------------------------------------------------------
+// Concern matching — the duplicate-flag suppression predicate.
+//
+// The model re-states the same concern with drifting phrasing turn to turn
+// ("the 20-pound target in two weeks" / "losing 20 pounds in 2 weeks"), so
+// exact string equality under-matches. Tokens are normalized (lowercase,
+// punctuation stripped, number words → digits, crude singularization,
+// stopwords dropped) and compared by Jaccard overlap plus a containment rule
+// for tightened restatements. Deliberately conservative: two genuinely
+// distinct concerns share at most incidental tokens and stay below the
+// threshold.
+// ---------------------------------------------------------------------------
+
+const CONCERN_STOPWORDS = new Set([
+  "the", "a", "an", "in", "of", "to", "for", "from", "at", "on", "with",
+  "and", "or", "that", "this", "is", "are", "be", "it", "its", "their",
+  "your", "into", "by",
+]);
+
+const NUMBER_WORDS: Record<string, string> = {
+  one: "1", two: "2", three: "3", four: "4", five: "5", six: "6",
+  seven: "7", eight: "8", nine: "9", ten: "10", eleven: "11", twelve: "12",
+};
+
+function concernTokens(s: string): Set<string> {
+  const tokens = s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/-/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => NUMBER_WORDS[t] ?? t)
+    .map((t) => (t.length > 3 && t.endsWith("s") ? t.slice(0, -1) : t))
+    .filter((t) => !CONCERN_STOPWORDS.has(t));
+  return new Set(tokens);
+}
+
+/** True when two concern phrasings name the same underlying concern. */
+export function matchesConcern(a: string, b: string): boolean {
+  if (normalize(a) === normalize(b)) return true;
+  const ta = concernTokens(a);
+  const tb = concernTokens(b);
+  if (ta.size === 0 || tb.size === 0) return false;
+  let intersection = 0;
+  for (const t of ta) if (tb.has(t)) intersection++;
+  const union = ta.size + tb.size - intersection;
+  if (intersection / union >= 0.6) return true;
+  // Containment: one phrasing is a tightened subset of the other ("the
+  // 20-pound target" ⊂ "the 20-pound target in two weeks").
+  const minSize = Math.min(ta.size, tb.size);
+  return intersection === minSize && minSize >= 2;
+}
+
+/**
+ * The most recent staged flag (decided OR undecided) matching `concern`, or
+ * null. The intake route uses this to suppress duplicate flag_safety calls:
+ * a match means the concern was already raised on a card — re-staging it
+ * would re-render the card and re-litigate a decision the user already made.
+ */
+export function findStagedMatch(
+  staged: StagedSafetyFlag[],
+  concern: string,
+): StagedSafetyFlag | null {
+  for (let i = staged.length - 1; i >= 0; i--) {
+    if (matchesConcern(staged[i]!.concern, concern)) return staged[i]!;
+  }
+  return null;
+}
+
+/**
+ * The tool_result content sent back when a duplicate flag_safety call is
+ * suppressed: it names the user's recorded decision (the product is the
+ * decider's pen) and instructs the model to continue the intake without
+ * re-raising — the continuation request is what turns a flag-only response
+ * into productive prose.
+ */
+export function duplicateFlagToolResultText(flag: StagedSafetyFlag): string {
+  if (flag.decided_at === null) {
+    return (
+      "This concern was already raised in this intake and is in front of the " +
+      "user as a decision card now. Do not raise it again. Continue the intake."
+    );
+  }
+  const decision = flag.user_overrode
+    ? "they chose to proceed with the original goal despite the concern"
+    : `they chose the safer alternative: ${flag.alternative}`;
+  return (
+    `This concern was already raised in this intake and the user has ` +
+    `decided — ${decision}. That decision is final for this intake; do not ` +
+    `raise this concern again. Continue the intake with the decided ` +
+    `direction as the working goal — ask the next question, or call ` +
+    `submit_intake if every required field is filled.`
+  );
+}
+
 /**
  * Merge staged decisions into the final summary's safety_flags at
  * submit_intake time. Staged flags are the base — they are what the user saw
@@ -185,9 +280,7 @@ export function mergeSafetyFlags(
     decided_at: f.decided_at,
   }));
   const extras: SafetyFlagRecord[] = modelFlags
-    .filter(
-      (mf) => !staged.some((sf) => normalize(sf.concern) === normalize(mf.concern)),
-    )
+    .filter((mf) => !staged.some((sf) => matchesConcern(sf.concern, mf.concern)))
     .map((mf) => ({
       concern: mf.concern,
       alternative: mf.alternative,

@@ -32,7 +32,11 @@ export function isIntensity(value: unknown): value is Intensity {
 export function intensityDescriptions(
   context: string,
 ): Record<Intensity, string> {
-  const goal = context.trim().length > 0 ? context.trim() : "this goal";
+  // The goal sentence often arrives with its own terminal period ("…by
+  // October 18, 2026."). Strip it before composing — the templates supply
+  // the sentence-ending period, and keeping both renders "2026.. Room…".
+  const stripped = context.trim().replace(/\.+$/, "").trim();
+  const goal = stripped.length > 0 ? stripped : "this goal";
   return {
     comfortable: `A steady, sustainable pace toward ${goal}. Room for life around it.`,
     challenging: `A demanding pace toward ${goal}. Most weeks ask something of you.`,

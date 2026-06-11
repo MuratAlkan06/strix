@@ -8,16 +8,42 @@
  *      (a forged/foreign token loads zero rows and 404s).
  *   3. Append the incoming user message to goal_drafts.raw_transcript, enforcing
  *      the hard 10-user-turn cap before spending a model call.
- *   4. Stream Sonnet text deltas to the client as SSE.
+ *   4. Stream Sonnet text deltas to the client as SSE — possibly across several
+ *      model rounds within the one POST (see duplicate-flag suppression below).
  *   5. On submit_intake: canonicalize (Haiku) the loose fields, then write the
  *      validated summary to goal_drafts.intake_summary_draft.
  *   6. Persist the assistant turn; capture + log token usage (cache fields).
+ *
+ * Duplicate-flag suppression (safety-override flow): prompt instructions alone
+ * do not stop the model from re-flagging a concern the user already decided,
+ * so the route enforces it. A flag_safety call whose concern matches an
+ * already-staged flag (fuzzy normalized matching — see matchesConcern) is
+ * NOT re-staged and emits NO safety_flag SSE event. Instead the route answers
+ * the tool call in-protocol: a follow-up request in the SAME POST carries a
+ * tool_result naming the user's recorded decision and instructing the model
+ * to continue, and the continuation's text keeps streaming to the client as
+ * ordinary deltas. Continuations are bounded (DUPLICATE_FLAG_CONTINUATIONS);
+ * past the bound the empty-prose guard below still leaves the user with prose.
+ *
+ * Empty-prose guard: a response cycle must never end with a silent assistant
+ * bubble. If no round produced text (flag-only responses, suppressed or
+ * legitimate), the route synthesizes one minimal in-register line — a lead-in
+ * for a fresh decision card, or a "decision stands" line after suppression —
+ * emitted as a delta and persisted as the assistant turn.
  *
  * All AI access goes through src/lib/ai/* — never @anthropic-ai/sdk directly.
  */
 import { auth } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
+import type {
+  ContentBlock,
+  ContentBlockParam,
+  MessageParam,
+  ToolResultBlockParam,
+  ToolUseBlock,
+} from "@anthropic-ai/sdk/resources/messages";
+import type { MessageStream } from "@anthropic-ai/sdk/lib/MessageStream";
 
 import { scopedDb } from "@/db/scoped";
 import { goal_drafts } from "@/db/schema";
@@ -35,10 +61,13 @@ import {
 import {
   appendFlag,
   asEventLog,
+  duplicateFlagToolResultText,
+  findStagedMatch,
   mergeSafetyFlags,
   pendingFlag,
   stagedFlags,
   type IntakeEvent,
+  type StagedSafetyFlag,
 } from "@/lib/ai/safety-flags";
 import {
   asTranscript,
@@ -51,6 +80,17 @@ import { MODEL_SONNET } from "@/lib/ai/models";
 
 export const dynamic = "force-dynamic";
 
+/** Bound on tool_result follow-up rounds per POST (duplicate-flag handling).
+ *  1 + this many model calls is the per-message ceiling. */
+const DUPLICATE_FLAG_CONTINUATIONS = 2;
+
+/** Empty-prose guard lines — minimal, in register, constant. */
+const FLAG_LEAD_IN_LINE =
+  "Before we go on, there's a concern to settle.";
+const DECISION_STANDS_LINE =
+  "That concern is settled — your decision stands. Let's keep going.";
+const CONTINUE_LINE = "Noted. Let's keep going.";
+
 interface IntakeBody {
   message?: unknown;
 }
@@ -59,6 +99,21 @@ function sse(event: string, data: unknown): Uint8Array {
   return new TextEncoder().encode(
     `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
   );
+}
+
+/** Re-shape response content blocks into request params for the continuation
+ *  (the SDK's response blocks carry extra fields the API rejects on input).
+ *  Empty text blocks are dropped — the API requires non-empty text. */
+function toAssistantParamBlocks(content: ContentBlock[]): ContentBlockParam[] {
+  const blocks: ContentBlockParam[] = [];
+  for (const b of content) {
+    if (b.type === "text" && b.text.length > 0) {
+      blocks.push({ type: "text", text: b.text });
+    } else if (b.type === "tool_use") {
+      blocks.push({ type: "tool_use", id: b.id, name: b.name, input: b.input });
+    }
+  }
+  return blocks;
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -121,10 +176,12 @@ export async function POST(req: Request): Promise<Response> {
     where: eq(goal_drafts.id, draft.id),
   });
 
-  let stream;
+  const initialMessages = toMessageParams(asTranscript(withUser));
+
+  let stream: MessageStream;
   try {
     stream = streamIntake({
-      messages: toMessageParams(asTranscript(withUser)),
+      messages: initialMessages,
       seed: draft.seed,
     });
   } catch {
@@ -133,87 +190,189 @@ export async function POST(req: Request): Promise<Response> {
 
   const readable = new ReadableStream<Uint8Array>({
     async start(controller) {
-      let assistantText = "";
       try {
-        stream.on("text", (delta) => {
-          assistantText += delta;
-          controller.enqueue(sse("delta", { text: delta }));
-        });
+        // Flags already staged on the draft (all decided here — an undecided
+        // one 409s above) + the ones staged during this response cycle. Both
+        // populations participate in duplicate matching.
+        const priorStaged = stagedFlags(log);
+        const newFlags: FlagSafetyInput[] = [];
 
-        const finalMessage = await stream.finalMessage();
+        let assistantText = "";
+        let apiMessages: MessageParam[] = initialMessages;
+        let currentStream = stream;
+        let continuations = 0;
+        let suppressedAny = false;
+        let parsedSubmit: SubmitIntakeInput | null = null;
+        let invalidSubmit = false;
 
-        // Persist the assistant turn (prose part) onto the event log.
-        let withAssistant: IntakeEvent[] = [
-          ...withUser,
-          { role: "assistant", content: assistantText },
-        ];
+        // The model-round loop: one round per request/response with the
+        // model; duplicate-flag tool_results trigger bounded follow-ups.
+        for (;;) {
+          let roundHadText = false;
+          currentStream.on("text", (delta) => {
+            if (!roundHadText && assistantText.length > 0) {
+              // Seam between a round's prose and its continuation's prose.
+              assistantText += "\n\n";
+              controller.enqueue(sse("delta", { text: "\n\n" }));
+            }
+            roundHadText = true;
+            assistantText += delta;
+            controller.enqueue(sse("delta", { text: delta }));
+          });
 
-        // Mid-conversation safety pushback: stage each valid flag_safety call
-        // (undecided) onto the log; the SSE event below renders the card.
-        const flagged: FlagSafetyInput[] = [];
-        for (const block of finalMessage.content) {
-          if (block.type !== "tool_use" || block.name !== FLAG_SAFETY_TOOL_NAME)
-            continue;
-          const parsedFlag = flagSafetySchema.safeParse(block.input);
-          if (parsedFlag.success) {
-            withAssistant = appendFlag(withAssistant, parsedFlag.data);
-            flagged.push(parsedFlag.data);
+          const finalMessage = await currentStream.finalMessage();
+          logAiUsage(toUsageLog("intake", MODEL_SONNET, finalMessage.usage));
+
+          const toolUses = finalMessage.content.filter(
+            (b): b is ToolUseBlock => b.type === "tool_use",
+          );
+          const submitUse = toolUses.find(
+            (b) => b.name === SUBMIT_INTAKE_TOOL_NAME,
+          );
+
+          // Classify flag_safety calls: genuinely new concerns get staged;
+          // re-raises of an already-staged concern (decided on a prior turn,
+          // or staged moments ago in this same response) are suppressed.
+          const roundNewFlags: FlagSafetyInput[] = [];
+          const duplicates = new Map<string, StagedSafetyFlag>();
+          for (const block of toolUses) {
+            if (block.name !== FLAG_SAFETY_TOOL_NAME) continue;
+            const parsedFlag = flagSafetySchema.safeParse(block.input);
+            if (!parsedFlag.success) continue;
+            const stagedSoFar = [
+              ...priorStaged,
+              ...[...newFlags, ...roundNewFlags].map(
+                (f): StagedSafetyFlag => ({
+                  type: "safety_flag",
+                  ...f,
+                  user_overrode: null,
+                  decided_at: null,
+                }),
+              ),
+            ];
+            const match = findStagedMatch(stagedSoFar, parsedFlag.data.concern);
+            if (match) {
+              duplicates.set(block.id, match);
+              suppressedAny = true;
+            } else {
+              roundNewFlags.push(parsedFlag.data);
+            }
           }
+          newFlags.push(...roundNewFlags);
+
+          // Termination round?
+          if (submitUse) {
+            const parsed = submitIntakeSchema.safeParse(submitUse.input);
+            if (parsed.success) {
+              parsedSubmit = parsed.data;
+            } else {
+              invalidSubmit = true;
+            }
+            break;
+          }
+
+          // A fresh concern: the decision card renders and the composer
+          // holds — the user must decide before the model speaks again.
+          if (roundNewFlags.length > 0) break;
+
+          // Only suppressed duplicates: answer the tool calls in-protocol and
+          // let the model continue productively within this same POST.
+          if (duplicates.size > 0 && continuations < DUPLICATE_FLAG_CONTINUATIONS) {
+            const toolResults: ToolResultBlockParam[] = toolUses.map((tu) => ({
+              type: "tool_result",
+              tool_use_id: tu.id,
+              content: duplicates.has(tu.id)
+                ? duplicateFlagToolResultText(duplicates.get(tu.id)!)
+                : "Received. Continue the intake.",
+            }));
+            apiMessages = [
+              ...apiMessages,
+              {
+                role: "assistant",
+                content: toAssistantParamBlocks(finalMessage.content),
+              },
+              { role: "user", content: toolResults },
+            ];
+            continuations++;
+            currentStream = streamIntake({
+              messages: apiMessages,
+              seed: draft.seed,
+            });
+            continue;
+          }
+
+          // Plain prose round, or the continuation budget is spent.
+          break;
         }
 
-        // Did the model terminate via submit_intake?
-        const toolUse = finalMessage.content.find(
-          (b) => b.type === "tool_use" && b.name === SUBMIT_INTAKE_TOOL_NAME,
-        );
+        // Empty-prose guard: never leave the user a silent bubble. (A
+        // text-less submit_intake is fine — the surface hands off to the
+        // confirmation card; an invalid submit already reports an error.)
+        if (
+          !parsedSubmit &&
+          !invalidSubmit &&
+          assistantText.trim().length === 0
+        ) {
+          const line =
+            newFlags.length > 0
+              ? FLAG_LEAD_IN_LINE
+              : suppressedAny
+                ? DECISION_STANDS_LINE
+                : CONTINUE_LINE;
+          assistantText = line;
+          controller.enqueue(sse("delta", { text: line }));
+        }
+
+        // Persist the assistant turn (combined prose across rounds) plus any
+        // newly staged flags — the pending flag stays the LAST event.
+        let withAssistant: IntakeEvent[] =
+          assistantText.length > 0
+            ? [...withUser, { role: "assistant", content: assistantText }]
+            : [...withUser];
+        for (const flag of newFlags) {
+          withAssistant = appendFlag(withAssistant, flag);
+        }
 
         let completed = false;
-        if (toolUse && toolUse.type === "tool_use") {
-          const parsed = submitIntakeSchema.safeParse(toolUse.input);
-          if (parsed.success) {
-            // Merge staged decisions into the final safety_flags: staged
-            // flags carry the user's user_overrode/decided_at; model-only
-            // flags keep null decisions (the product is the decider's pen).
-            const merged = mergeSafetyFlags(
-              stagedFlags(withAssistant),
-              parsed.data.safety_flags,
-            );
-            const summary = await buildSummaryDraft(
-              { ...parsed.data, safety_flags: merged },
-              asTranscript(withAssistant),
-            );
-            await sdb.update(goal_drafts, {
-              set: {
-                raw_transcript: withAssistant,
-                intake_summary_draft: summary,
-              },
-              where: eq(goal_drafts.id, draft.id),
-            });
-            completed = true;
-            controller.enqueue(sse("complete", { summary }));
-          } else {
-            // Tool input failed validation — keep the transcript, ask again.
-            await sdb.update(goal_drafts, {
-              set: { raw_transcript: withAssistant },
-              where: eq(goal_drafts.id, draft.id),
-            });
-            controller.enqueue(
-              sse("error", { message: "Intake summary was incomplete." }),
-            );
-          }
+        if (parsedSubmit) {
+          // Merge staged decisions into the final safety_flags: staged
+          // flags carry the user's user_overrode/decided_at; model-only
+          // flags keep null decisions (the product is the decider's pen).
+          const merged = mergeSafetyFlags(
+            stagedFlags(withAssistant),
+            parsedSubmit.safety_flags,
+          );
+          const summary = await buildSummaryDraft(
+            { ...parsedSubmit, safety_flags: merged },
+            asTranscript(withAssistant),
+          );
+          await sdb.update(goal_drafts, {
+            set: {
+              raw_transcript: withAssistant,
+              intake_summary_draft: summary,
+            },
+            where: eq(goal_drafts.id, draft.id),
+          });
+          completed = true;
+          controller.enqueue(sse("complete", { summary }));
         } else {
           await sdb.update(goal_drafts, {
             set: { raw_transcript: withAssistant },
             where: eq(goal_drafts.id, draft.id),
           });
+          if (invalidSubmit) {
+            // Tool input failed validation — keep the transcript, ask again.
+            controller.enqueue(
+              sse("error", { message: "Intake summary was incomplete." }),
+            );
+          }
         }
 
         // Emit the decision card(s) only after the flag is durably staged, so
         // a rendered card always has a server-side pending flag behind it.
-        for (const flag of flagged) {
+        for (const flag of newFlags) {
           controller.enqueue(sse("safety_flag", { flag }));
         }
-
-        logAiUsage(toUsageLog("intake", MODEL_SONNET, finalMessage.usage));
 
         if (!completed) {
           controller.enqueue(sse("done", { completed: false }));

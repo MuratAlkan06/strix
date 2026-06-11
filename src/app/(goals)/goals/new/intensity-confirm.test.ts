@@ -65,6 +65,23 @@ describe("intensityLabel / intensityDescriptions (in register)", () => {
     const d = intensityDescriptions("   ");
     expect(d.comfortable).toContain("this goal");
   });
+
+  it("renders a single period when the goal sentence carries its own terminal period", () => {
+    // Gate re-verification cosmetic fix: "…October 18, 2026.. Room for life…"
+    const d = intensityDescriptions("Summit Mount Whitney by October 18, 2026.");
+    for (const level of ["comfortable", "challenging", "brutal"] as const) {
+      expect(d[level]).toContain("October 18, 2026. ");
+      expect(d[level]).not.toContain("..");
+    }
+  });
+
+  it("renders single periods when the goal sentence has no terminal period", () => {
+    const d = intensityDescriptions("Summit Mount Whitney by October 18, 2026");
+    expect(d.comfortable).toBe(
+      "A steady, sustainable pace toward Summit Mount Whitney by October 18, 2026. Room for life around it.",
+    );
+    expect(d.comfortable).not.toContain("..");
+  });
 });
 
 describe("isIntensity guard", () => {

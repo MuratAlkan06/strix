@@ -39,6 +39,10 @@ describe("plan system prompt", () => {
     expect(a.text).not.toMatch(/\d{4}-\d{2}-\d{2}/); // ISO date
     expect(a.text).not.toMatch(/\b\d{10,}\b/); // epoch-ish timestamp
     expect(a.text.toLowerCase()).not.toContain("seed:");
+    // The per-request date anchor lives in the user message
+    // (buildPlanMessages), never here — a date phrase in the cached block
+    // would re-version the cache every calendar day.
+    expect(a.text.toLowerCase()).not.toContain("today's date");
   });
 
   it("registers the voice-first caching note as a code comment, not prompt text", () => {
