@@ -39,11 +39,16 @@ function hasBaseline(name: string): boolean {
 
 /**
  * Skip a screenshot spec ONLY when no baseline exists for this platform AND we
- * are not currently (re)generating baselines (`updateSnapshots: "none"` means
- * a plain run with no writing) — the playground-dashboard scheme verbatim.
+ * are not explicitly (re)generating baselines — the playground-dashboard
+ * scheme verbatim. NOTE: a plain run resolves `updateSnapshots` to Playwright's
+ * DEFAULT "missing" (write actual + FAIL), so only the explicit update modes
+ * count as updating; bare `--update-snapshots` (what `pnpm verify:ui:update`
+ * passes) presets "changed".
  */
 function skipUnlessBaseline(name: string, testInfo: TestInfo): void {
-  const updating = testInfo.config.updateSnapshots !== "none";
+  const updating =
+    testInfo.config.updateSnapshots === "all" ||
+    testInfo.config.updateSnapshots === "changed";
   test.skip(
     !updating && !hasBaseline(name),
     `no ${process.platform} baseline yet — run \`pnpm verify:ui:update\` (axe still gates this surface)`,
