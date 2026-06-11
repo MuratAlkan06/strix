@@ -1,4 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+
+import { isGoalSeed } from "@/lib/goal-seeds";
 
 const isPublicRoute = createRouteMatcher([
   "/",
@@ -14,7 +17,23 @@ const isPublicRoute = createRouteMatcher([
   "/playground(.*)",
 ]);
 
+// /goals/new and its draft-bootstrap Route Handler both accept ?seed= — the
+// whitelist gate must cover both entrances.
+const isIntakeRoute = createRouteMatcher(["/goals/new", "/goals/new/bootstrap"]);
+
 export default clerkMiddleware(async (auth, req) => {
+  // Seed whitelist enforced at the edge, BEFORE auth: a non-empty,
+  // non-whitelisted ?seed= on /goals/new is rejected with 400 regardless of
+  // auth state, so a prompt-injection payload never matters (App Router pages
+  // can't set a 400 status on render). The same predicate lives in
+  // goal-seeds.ts; the page re-derives the validated seed for the draft from
+  // this trusted set.
+  if (isIntakeRoute(req)) {
+    const seed = req.nextUrl.searchParams.get("seed");
+    if (seed !== null && seed !== "" && !isGoalSeed(seed)) {
+      return new NextResponse("Invalid seed.", { status: 400 });
+    }
+  }
   if (!isPublicRoute(req)) {
     await auth.protect();
   }

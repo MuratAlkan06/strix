@@ -1,6 +1,17 @@
 import Image from "next/image";
+import { redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
 
-export default function Home() {
+// The public landing. Signed-in users are sent to their dashboard — this is how
+// authenticated users "reach the dashboard via redirect from the root page"
+// (phase-1-golden-path routing note), since `/` is the public landing and the
+// dashboard lives at `/dashboard`. Signed-out users see the landing below.
+export default async function Home() {
+  const { userId } = await auth();
+  if (userId) {
+    redirect("/dashboard");
+  }
+
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">

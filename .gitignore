@@ -18,6 +18,8 @@
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+# playwright-mcp browser-review artifacts (recurs every design review)
+/.playwright-mcp/
 
 # next.js
 /.next/
@@ -29,6 +31,9 @@
 # misc
 .DS_Store
 *.pem
+
+# local tool settings/scratch
+.claude/
 
 # debug
 npm-debug.log*

@@ -18,14 +18,14 @@
 
 ### Empty-state dashboard
 
-- Route: `app/(dashboard)/page.tsx`. Default landing for authenticated users.
+- Route: app/(dashboard)/dashboard/page.tsx, serving /dashboard. The default landing for authenticated users (signed-in users hitting / are redirected here). / itself stays the public landing page. (Routing decision 2026-06-10: a page in the (dashboard) group at the root would resolve to /, colliding with the public landing; serving the dashboard at /dashboard and redirecting signed-in users from / keeps / static/SEO-clean for the Phase3 + public marketing/pricing surface.)
 - If `count(goals where status='active') = 0`: render empty state. One primary CTA ("Create your first goal") + 5 example tiles: **Climb a mountain · Learn a language · Run a race · Write a book · Learn an instrument**. (Tiles = existing Scene variants — see Design-system handoff above.)
 - Clicking a tile navigates to `/goals/new?seed=climb` (and `language`, `race`, `book`, `instrument`). **Seed values are whitelisted server-side to exactly `{climb, language, race, book, instrument}`** — any other value is rejected before being passed to the AI prompt (prompt-injection mitigation).
 - Copy register: Patagonia/Arc'teryx. Hero copy is declarative, low on exclamation. No "Crush it" energy. (Final copy pass is Phase 5; first cut must already be in register.)
 
 ### Goal intake conversational chat
 
-- Route: `app/(goals)/new/page.tsx`. Streaming chat UI. **All intake state (raw transcript, partial structured fields) is staged in `goal_drafts`** — on first landing, the server generates a random `session_token` (~32 bytes base64url), inserts a `goal_drafts` row keyed by `session_token`, and writes the token to an HttpOnly cookie. Every subsequent request reads the cookie → loads the draft. Drafts expire after 30 days (Inngest sweep handles cleanup).
+- Route: `app/(goals)/goals/new/page.tsx (serving /goals/new)`. Streaming chat UI. **All intake state (raw transcript, partial structured fields) is staged in `goal_drafts`** — on first landing, the server generates a random `session_token` (~32 bytes base64url), inserts a `goal_drafts` row keyed by `session_token`, and writes the token to an HttpOnly cookie. Every subsequent request reads the cookie → loads the draft. Drafts expire after 30 days (Inngest sweep handles cleanup).
 - Server-side AI route: `POST /api/ai/intake` — accepts message history + seed + draft_id, returns a streaming response. Server-side per-message logging appends to `goal_drafts.raw_transcript` (jsonb append).
 - Model: `claude-sonnet-4-6`. System prompt establishes:
   - Patagonia/Arc'teryx voice — coaching, not cheerleading; declarative; plain.
@@ -70,8 +70,8 @@
 
 ### Draft-plan review/edit UI
 
-- Route: `app/(goals)/new/review/page.tsx`. Renders `goal_drafts.plan_draft` as editable sections (daily, weekly, milestones, equipment).
-- Inline edit per item, add/remove items, drag-to-reorder for milestones.
+- Route: `app/(goals)/goals/new/review/page.tsx`. Renders `goal_drafts.plan_draft` as editable sections (daily, weekly, milestones, equipment).
+- Inline edit per item, add/remove items, reorder via move up/down controls (Phase 1 cut, keyboard-accessible)
 - "Save goal" button commits: creates `goal` row (with `started_at=now()`), `intake_summary` row (FK populated at this point — `intake_summaries.goal_id` is set here, not before), plus all child rows in a single transaction; deletes the `goal_drafts` row. Color assignment runs here (see context below).
 - **Nothing saves silently.** Going back to intake or closing the tab without saving leaves no `goal` row.
 - **Medical disclaimer for physical/fitness goals.** When the intake's `activity_type ∈ {climbing, mountaineering, running, cycling, swimming, strength}`, the review screen surfaces a single-line disclaimer under the plan header: "This plan is generated guidance, not medical advice. Check with a physician before starting a demanding physical program." Patagonia register, factual, no modal interstitial, no acknowledgment required to save. Non-physical activity types (language, writing, instrument, business, study, other) do not surface the disclaimer.
@@ -79,14 +79,14 @@
 
 ### Goals list
 
-- Route: `app/(goals)/page.tsx`.
+- Route: `app/(goals)/goals/page.tsx`.
 - Active goals: grid of cards showing color dot, title, progress bar (completed_milestones / total_milestones), target date, next milestone title.
 - "Add new goal" tile appears when `active_count < tier_cap`. **Phase 1 cap is hardcoded to 5** (matching the highest paid-tier cap) — gated to true tier cap in Phase 3. This keeps the 5-color palette algorithm coherent in Phase 1 (which has no archived goals yet to recycle from). Color of the tile is the first available palette slot — a preview of which color the new goal will get.
 - "Completed" section below; "Archived" section collapsed below that (empty in Phase 1; populated by Phase 2).
 
 ### Goal detail
 
-- Route: `app/(goals)/[id]/page.tsx`.
+- Route: `app/(goals)/goals/[id]/page.tsx`.
 - Sections: header (title, color, intensity control), daily habits, weekly sessions, milestones (timeline), equipment.
 - All sections editable: add/remove/reschedule items inline.
 - **Intensity control**: per PLAN.md §5 flag #2 + flag #6 resolution. When `goals.intensity_override` is unset, the control shows the goal's effective intensity — its intake `confirmed_intensity` — as the active selection, with copy "Follows your intake intensity" (not "account preference": the chain prefers the intake pick). When the user changes it, sets `goals.intensity_override`; `intensity_override` is written **only** on explicit change here, never at goal creation.
@@ -105,7 +105,7 @@
 
 ### Equipment aggregated view
 
-- Route: `app/(equipment)/page.tsx`.
+- Route: `app/(equipment)/equipment/page.tsx`.
 - All equipment across active goals, grouped by urgency:
   - **This week** — deadline within 7 days
   - **This month** — deadline within 30 days
