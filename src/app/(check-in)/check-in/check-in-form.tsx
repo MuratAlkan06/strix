@@ -214,7 +214,12 @@ export function CheckInForm({ model, onSubmit, onSkip }: CheckInFormProps) {
             </div>
           </fieldset>
 
-          <fieldset>
+          {/* min-w-0 neutralizes the fieldset's browser-default
+              min-width: min-content — without it a long nowrap goal title
+              becomes the fieldset's intrinsic width and drags <main> past the
+              375px viewport; with it, the rows' min-w-0/truncate chain clamps
+              the title to an ellipsis. */}
+          <fieldset className="min-w-0">
             <legend className="font-heading text-base font-medium text-foreground">
               Replan which goals?
             </legend>
@@ -324,10 +329,13 @@ function GoalRow({
           className="size-5 after:-inset-3 [&_svg]:size-4"
         />
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5">
+          {/* min-w-0 (not flex-1: the note should sit inline after short
+              titles) lets a long title shrink-and-truncate instead of
+              overflowing the 375px viewport. */}
           <GoalChip
             colorIndex={colorIndex}
             name={row.title}
-            className="text-sm text-foreground"
+            className="min-w-0 text-sm text-foreground"
           />
           <span className="text-xs text-muted-foreground">
             Replan already requested

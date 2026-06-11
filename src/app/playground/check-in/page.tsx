@@ -29,7 +29,10 @@ import {
 } from "../../(check-in)/check-in/check-in-model";
 import { CheckInHarness } from "./harness";
 
-// Display order by started_at asc: climb → race → book.
+// Display order by started_at asc: climb → race → Japanese. The third title
+// is deliberately long: it pins the 375px truncation guard (a fieldset's
+// default min-width: min-content once let a nowrap goal title blow out the
+// mobile viewport — the screenshot baselines keep that fixed).
 const GOALS: CheckInGoalLike[] = [
   {
     id: "11111111-1111-4111-8111-111111111111",
@@ -45,7 +48,7 @@ const GOALS: CheckInGoalLike[] = [
   },
   {
     id: "33333333-3333-4333-8333-333333333333",
-    title: "Write a novel",
+    title: "Learn conversational Japanese before the Kyoto trip",
     color_index: 4,
     started_at: "2026-05-20T09:00:00.000Z",
   },
