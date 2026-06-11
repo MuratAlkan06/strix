@@ -440,17 +440,24 @@ function bindScoped(db: Db, userId: string): ScopedBase {
     async selectFrom(table, opts) {
       const scope = tableScope(table, userId);
       const where = opts?.where ? (and(scope, opts.where) as SQL) : scope;
-      return db.select().from(table).where(where) as Promise<
-        (typeof table)["$inferSelect"][]
-      >;
+      // drizzle 0.44+ guards .from() with a conditional type
+      // (TableLikeHasEmptySelection) that TS cannot resolve for an unresolved
+      // generic T — upcast to concrete PgTable; the return cast below already
+      // pins the precise row type.
+      return db
+        .select()
+        .from(table as PgTable)
+        .where(where) as Promise<(typeof table)["$inferSelect"][]>;
     },
 
     async count(table, opts) {
       const scope = tableScope(table, userId);
       const where = opts?.where ? (and(scope, opts.where) as SQL) : scope;
+      // Same drizzle 0.44+ generic-T upcast as selectFrom; the result shape
+      // ({ value }) never depends on the table's row type.
       const rows = await db
         .select({ value: count() })
-        .from(table)
+        .from(table as PgTable)
         .where(where);
       return Number(rows[0]?.value ?? 0);
     },
