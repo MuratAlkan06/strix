@@ -10,7 +10,7 @@
 
 ### Weekly check-in UI
 
-- Route: `app/(check-in)/page.tsx`.
+- Route: `app/(check-in)/check-in/page.tsx`.
 - Surfaces as a top-of-dashboard prompt every Friday (in user's timezone) until completed for the current week. Manually accessible any time.
 - Form:
   - "How did this week feel?" — one-tap selector: `too_easy | right | too_hard`.
@@ -190,7 +190,7 @@ End-to-end:
 6. Mark a goal complete → celebration shown, `status='completed'`, `auto_archive_at` is 7 days from now, `archive_reason='user_action'`.
 7. Run the Inngest auto-archive function manually with `now=auto_archive_at+1s` → goal flips to `archived`. Idempotent: re-running does nothing.
 8. Accomplished section appears on dashboard with the completed goal.
-9. As a simulated Free user with `replans_used = 1` of 2: open weekly check-in with 3 active goals. Two goals are enabled, one is disabled with the inline tooltip. Tap the disabled goal → upgrade modal opens.
+9. As a simulated Free user with `replans_used = 0` of 2: open weekly check-in with 3 active goals. Two goals are enabled, one is disabled with the inline tooltip. Tap the disabled goal → upgrade modal opens.
 10. Submit the check-in with the 2 enabled goals selected → 2 `replan_proposals` rows created; `usage_counters.replans_used` does not increment in Phase 2 (Phase 3 adds the increment).
 
 Automated (Vitest):
