@@ -6,8 +6,8 @@
  * "then proceeds to plan generation") and renders three calm states:
  *   generating — quiet line + pulsing muted blocks (no fake progress %;
  *                shimmer collapses to static under reduced motion, §7).
- *   ready      — "Your plan is ready." The review route is Slice 7; nothing
- *                here links to it yet (no dead buttons).
+ *   ready      — "Your plan is ready." with the primary action into the
+ *                Slice 7 review route (/goals/new/review).
  *   error      — a calm card with a constant line + retry (§8: never a red
  *                screen; destructive red is reserved for destructive acts).
  *
@@ -21,8 +21,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export type PlanGenerationState = "generating" | "ready" | "error";
 
@@ -103,9 +105,17 @@ export function PlanGeneration({
           <p className="mt-2 text-base leading-relaxed text-foreground">
             Daily habits, weekly sessions, milestones, and the gear to line up.
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            The review step is coming together.
-          </p>
+          <div className="mt-5">
+            <Link
+              href="/goals/new/review"
+              className={cn(
+                buttonVariants({ size: "lg" }),
+                "h-11 min-h-11 w-full px-5 sm:w-auto",
+              )}
+            >
+              Review your plan
+            </Link>
+          </div>
         </>
       )}
 

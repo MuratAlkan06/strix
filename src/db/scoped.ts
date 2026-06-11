@@ -15,6 +15,9 @@
  *   - Soft-deleted users (users.deleted_at IS NOT NULL) get empty results
  *     and rejected writes (reads, updates, deletes AND inserts) — built in
  *     from Phase 0, not bolted on in Phase 4.
+ *   - transaction(fn) runs fn inside a single Postgres transaction whose
+ *     callback surface is the same scoped binding (ScopedTx) — every
+ *     statement inside keeps all of the above; a throw rolls everything back.
  *
  * Direct-ownership tables (filter on `user_id = userId`):
  *   goals, goal_drafts, usage_counters, weekly_check_ins, subscriptions,
@@ -45,7 +48,7 @@ import {
   SQL,
 } from "drizzle-orm";
 import type { PgColumn, PgTable, PgUpdateSetSource } from "drizzle-orm/pg-core";
-import { internalDb as db } from "./client";
+import { internalDb, withTransactionalDb, type Db } from "./client";
 import {
   equipment,
   goals,
@@ -315,6 +318,14 @@ const SELF_UPDATE_FORBIDDEN = [
   "created_at",
 ] as const;
 
+/**
+ * The scoped surface available INSIDE scopedDb().transaction — identical to
+ * ScopedDb minus `transaction` itself (no nesting). Every statement issued on
+ * it carries the same ownership + soft-delete discipline as outside a
+ * transaction: the binding is per-executor, never per-statement.
+ */
+export type ScopedTx = Omit<ScopedDb, "transaction">;
+
 export interface ScopedDb {
   readonly userId: string;
 
@@ -351,15 +362,25 @@ export interface ScopedDb {
     table: T,
     opts?: DeleteOptions,
   ): Promise<T["$inferSelect"][]>;
+
+  /**
+   * Run `fn` inside a single Postgres transaction (all-or-nothing). The
+   * callback receives the SAME scoped surface bound to the transaction
+   * client, so every statement inside keeps the ownership, forbidden-key,
+   * and soft-delete guarantees — there is no raw-client escape hatch here.
+   * A thrown error (including any ScopedDbError from a failed ownership
+   * proof) rolls the whole transaction back.
+   */
+  transaction<T>(fn: (tx: ScopedTx) => Promise<T>): Promise<T>;
 }
 
 /**
- * scopedDb(userId) — bind a userId to a constrained Drizzle surface.
- * Throws synchronously if userId is missing.
+ * Bind a userId to the constrained surface over a specific executor — the
+ * module-scope HTTP client for scopedDb itself, or a transaction client for
+ * scopedDb().transaction. All guarantees live here, parameterized only by
+ * WHICH connection runs the statements.
  */
-export function scopedDb(userId: string): ScopedDb {
-  requireUserId(userId);
-
+function bindScoped(db: Db, userId: string): ScopedTx {
   return {
     userId,
 
@@ -582,6 +603,22 @@ export function scopedDb(userId: string): ScopedDb {
       return db.delete(table).where(where).returning() as Promise<
         (typeof table)["$inferSelect"][]
       >;
+    },
+  };
+}
+
+/**
+ * scopedDb(userId) — bind a userId to a constrained Drizzle surface.
+ * Throws synchronously if userId is missing.
+ */
+export function scopedDb(userId: string): ScopedDb {
+  requireUserId(userId);
+
+  return {
+    ...bindScoped(internalDb, userId),
+
+    async transaction(fn) {
+      return withTransactionalDb((tx) => fn(bindScoped(tx, userId)));
     },
   };
 }

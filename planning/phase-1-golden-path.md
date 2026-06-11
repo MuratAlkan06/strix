@@ -70,8 +70,8 @@
 
 ### Draft-plan review/edit UI
 
-- Route: `app/(goals)/new/review/page.tsx`. Renders `goal_drafts.plan_draft` as editable sections (daily, weekly, milestones, equipment).
-- Inline edit per item, add/remove items, drag-to-reorder for milestones.
+- Route: `app/(goals)/goals/new/review/page.tsx`. Renders `goal_drafts.plan_draft` as editable sections (daily, weekly, milestones, equipment).
+- Inline edit per item, add/remove items, reorder via move up/down controls (Phase 1 cut, keyboard-accessible)
 - "Save goal" button commits: creates `goal` row (with `started_at=now()`), `intake_summary` row (FK populated at this point — `intake_summaries.goal_id` is set here, not before), plus all child rows in a single transaction; deletes the `goal_drafts` row. Color assignment runs here (see context below).
 - **Nothing saves silently.** Going back to intake or closing the tab without saving leaves no `goal` row.
 - **Medical disclaimer for physical/fitness goals.** When the intake's `activity_type ∈ {climbing, mountaineering, running, cycling, swimming, strength}`, the review screen surfaces a single-line disclaimer under the plan header: "This plan is generated guidance, not medical advice. Check with a physician before starting a demanding physical program." Patagonia register, factual, no modal interstitial, no acknowledgment required to save. Non-physical activity types (language, writing, instrument, business, study, other) do not surface the disclaimer.
@@ -79,7 +79,7 @@
 
 ### Goals list
 
-- Route: `app/(goals)/page.tsx`.
+- Route: `app/(goals)/goals/page.tsx`.
 - Active goals: grid of cards showing color dot, title, progress bar (completed_milestones / total_milestones), target date, next milestone title.
 - "Add new goal" tile appears when `active_count < tier_cap`. **Phase 1 cap is hardcoded to 5** (matching the highest paid-tier cap) — gated to true tier cap in Phase 3. This keeps the 5-color palette algorithm coherent in Phase 1 (which has no archived goals yet to recycle from). Color of the tile is the first available palette slot — a preview of which color the new goal will get.
 - "Completed" section below; "Archived" section collapsed below that (empty in Phase 1; populated by Phase 2).
