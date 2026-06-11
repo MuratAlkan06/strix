@@ -14,9 +14,10 @@
  */
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
+import { sweepExpiredGoalDrafts } from "@/lib/inngest/sweep-expired-goal-drafts";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [],
+  functions: [sweepExpiredGoalDrafts],
   signingKey: process.env.INNGEST_SIGNING_KEY,
 });

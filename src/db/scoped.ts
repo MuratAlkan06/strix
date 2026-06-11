@@ -15,6 +15,12 @@
  *   - Soft-deleted users (users.deleted_at IS NOT NULL) get empty results
  *     and rejected writes (reads, updates, deletes AND inserts) — built in
  *     from Phase 0, not bolted on in Phase 4.
+ *   - transaction(fn) runs fn inside a single Postgres transaction whose
+ *     callback surface is the same scoped binding (ScopedTx) — every
+ *     statement inside keeps all of the above; a throw rolls everything back.
+ *     ScopedTx additionally exposes lockScope(namespace), a per-user advisory
+ *     transaction lock for serializing concurrent same-user work (the key
+ *     embeds the scoped userId, so a user can only lock their own scope).
  *
  * Direct-ownership tables (filter on `user_id = userId`):
  *   goals, goal_drafts, usage_counters, weekly_check_ins, subscriptions,
@@ -31,8 +37,9 @@
  * If you need a genuinely cross-user query (webhook, Inngest job) or must
  * bypass the soft-delete filter (account lifecycle), import `unscopedDb`
  * from "@/db/unscoped". A CI check (scripts/check-unscoped-db.mjs) restricts
- * those imports to lib/inngest/*, app/api/webhooks/*, and
- * lib/auth/lifecycle.ts.
+ * those imports to lib/inngest/*, app/api/webhooks/*,
+ * lib/auth/lifecycle.ts, and the fixture lifecycle of the env-gated
+ * db/scoped.integration.test.ts.
  */
 import {
   and,
@@ -45,7 +52,7 @@ import {
   SQL,
 } from "drizzle-orm";
 import type { PgColumn, PgTable, PgUpdateSetSource } from "drizzle-orm/pg-core";
-import { internalDb as db } from "./client";
+import { internalDb, withTransactionalDb, type Db } from "./client";
 import {
   equipment,
   goals,
@@ -315,6 +322,36 @@ const SELF_UPDATE_FORBIDDEN = [
   "created_at",
 ] as const;
 
+/** The scoped surface shared by scopedDb and its transaction binding. */
+type ScopedBase = Omit<ScopedDb, "transaction">;
+
+/**
+ * The scoped surface available INSIDE scopedDb().transaction — ScopedDb minus
+ * `transaction` itself (no nesting), plus the transaction-only `lockScope`.
+ * Every statement issued on it carries the same ownership + soft-delete
+ * discipline as outside a transaction: the binding is per-executor, never
+ * per-statement.
+ */
+export interface ScopedTx extends ScopedBase {
+  /**
+   * Serialize concurrent work for the scoped user: takes a Postgres advisory
+   * TRANSACTION lock (pg_advisory_xact_lock) keyed on a stable 64-bit hash of
+   * `namespace:userId`, blocking until any concurrent holder of the same key
+   * commits or rolls back. Released automatically at transaction end — no
+   * unlock call exists or is needed.
+   *
+   * Ownership discipline: the scoped userId is baked into the key, so a
+   * caller can only ever serialize against ITSELF — never take (or contend
+   * on) another user's lock. `namespace` must be a compile-time constant
+   * (it is parameterized, so injection-safe regardless, but a user-influenced
+   * namespace would fragment the serialization it exists to provide).
+   *
+   * Transaction-only by design: an advisory xact lock outside an explicit
+   * transaction spans a single statement and serializes nothing.
+   */
+  lockScope(namespace: string): Promise<void>;
+}
+
 export interface ScopedDb {
   readonly userId: string;
 
@@ -351,15 +388,25 @@ export interface ScopedDb {
     table: T,
     opts?: DeleteOptions,
   ): Promise<T["$inferSelect"][]>;
+
+  /**
+   * Run `fn` inside a single Postgres transaction (all-or-nothing). The
+   * callback receives the SAME scoped surface bound to the transaction
+   * client, so every statement inside keeps the ownership, forbidden-key,
+   * and soft-delete guarantees — there is no raw-client escape hatch here.
+   * A thrown error (including any ScopedDbError from a failed ownership
+   * proof) rolls the whole transaction back.
+   */
+  transaction<T>(fn: (tx: ScopedTx) => Promise<T>): Promise<T>;
 }
 
 /**
- * scopedDb(userId) — bind a userId to a constrained Drizzle surface.
- * Throws synchronously if userId is missing.
+ * Bind a userId to the constrained surface over a specific executor — the
+ * module-scope HTTP client for scopedDb itself, or a transaction client for
+ * scopedDb().transaction. All guarantees live here, parameterized only by
+ * WHICH connection runs the statements.
  */
-export function scopedDb(userId: string): ScopedDb {
-  requireUserId(userId);
-
+function bindScoped(db: Db, userId: string): ScopedBase {
   return {
     userId,
 
@@ -582,6 +629,41 @@ export function scopedDb(userId: string): ScopedDb {
       return db.delete(table).where(where).returning() as Promise<
         (typeof table)["$inferSelect"][]
       >;
+    },
+  };
+}
+
+/**
+ * scopedDb(userId) — bind a userId to a constrained Drizzle surface.
+ * Throws synchronously if userId is missing.
+ */
+export function scopedDb(userId: string): ScopedDb {
+  requireUserId(userId);
+
+  return {
+    ...bindScoped(internalDb, userId),
+
+    async transaction(fn) {
+      return withTransactionalDb((tx) =>
+        fn({
+          ...bindScoped(tx, userId),
+
+          // Transaction-only: the lock key embeds the bound userId, so the
+          // scoped user can only serialize against themselves (see the
+          // ScopedTx doc). hashtextextended gives a stable bigint key for
+          // pg_advisory_xact_lock; the lock releases at COMMIT/ROLLBACK.
+          async lockScope(namespace: string) {
+            if (typeof namespace !== "string" || namespace.trim().length === 0) {
+              throw new ScopedDbError(
+                "scopedDb.lockScope: namespace must be a non-empty constant string.",
+              );
+            }
+            await tx.execute(
+              sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${namespace}:${userId}`}::text, 0))`,
+            );
+          },
+        }),
+      );
     },
   };
 }
