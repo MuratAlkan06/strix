@@ -28,6 +28,19 @@ export const ACTIVE_GOAL_CAP = 5;
 export const GOAL_COLOR_COUNT = 5;
 
 /**
+ * Palette slot names (DESIGN.md §5). Color is never the sole signal — the
+ * goals-list "Add new goal" tile pairs its next-color dot with this name so
+ * the preview survives without color perception.
+ */
+export const GOAL_COLOR_NAMES: readonly string[] = [
+  "dawn amber",
+  "alpine blue",
+  "lichen green",
+  "clay rose",
+  "dusk plum",
+];
+
+/**
  * Pick the color_index for a new goal: the lowest palette slot not used by
  * an active goal. Throws when every slot is taken — callers must enforce the
  * active-goal cap BEFORE assigning a color (the cap is what guarantees a free

@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   ACTIVE_GOAL_CAP,
   GOAL_COLOR_COUNT,
+  GOAL_COLOR_NAMES,
   pickColorIndex,
 } from "./goal-colors";
 
@@ -54,5 +55,10 @@ describe("Phase 1 constants", () => {
   it("cap and palette size are both 5 (the cap keeps the palette coherent)", () => {
     expect(ACTIVE_GOAL_CAP).toBe(5);
     expect(GOAL_COLOR_COUNT).toBe(5);
+  });
+
+  it("every palette slot has a name (color is never the sole signal)", () => {
+    expect(GOAL_COLOR_NAMES).toHaveLength(GOAL_COLOR_COUNT);
+    expect(new Set(GOAL_COLOR_NAMES).size).toBe(GOAL_COLOR_COUNT);
   });
 });

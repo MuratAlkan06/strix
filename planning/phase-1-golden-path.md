@@ -105,7 +105,7 @@
 
 ### Equipment aggregated view
 
-- Route: `app/(equipment)/page.tsx`.
+- Route: `app/(equipment)/equipment/page.tsx`.
 - All equipment across active goals, grouped by urgency:
   - **This week** — deadline within 7 days
   - **This month** — deadline within 30 days
