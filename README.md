@@ -234,6 +234,10 @@ src/
 Architecture decisions live in `docs/adr/` — `0001-ai-client-stack.md` records
 the direct-`@anthropic-ai/sdk` choice and the `src/lib/ai/` chokepoint.
 
+Compliance docs live in `docs/legal/` (terms-of-service and privacy-policy
+drafts) and `docs/launch/` (ops runbooks: email DNS, Stripe setup, vendor
+DPAs).
+
 ## Local webhook delivery
 
 Clerk delivers webhooks over the public internet. For local testing, expose
