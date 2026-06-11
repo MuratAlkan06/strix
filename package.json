@@ -38,7 +38,7 @@
     "@radix-ui/react-tooltip": "^1.1.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "drizzle-orm": "^0.36.4",
+    "drizzle-orm": "^0.45.2",
     "inngest": "^3.27.5",
     "lucide-react": "^0.469.0",
     "motion": "^12.40.0",
@@ -71,5 +71,11 @@
     "tsx": "^4.19.2",
     "typescript": "^5",
     "vitest": "^4.1.8"
+  },
+  "pnpm": {
+    "overrides": {
+      "next>postcss": ">=8.5.10",
+      "@esbuild-kit/core-utils>esbuild": "^0.25.0"
+    }
   }
 }
