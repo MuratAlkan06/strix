@@ -32,7 +32,15 @@
  *      users.intensity_preference).
  *   7. Persist AFTER generation succeeds — a failed generation corrupts
  *      nothing (the pending row keeps its prior diff; the create path writes
- *      no row).
+ *      no row). The persist runs inside ONE transaction holding the per-user
+ *      lockScope("replan") advisory lock (the Slice-1 check-in pattern),
+ *      which re-resolves fill-vs-create authoritatively: the proposal can be
+ *      decided — or created — during the multi-second model call, so the
+ *      pre-generation reads are cheap early rejections only. Generation
+ *      stays OUTSIDE the lock so concurrent replans for different goals keep
+ *      generating in parallel (the Slice-3 fan-out property); the lock also
+ *      closes the duplicate-insert window (replan_proposals has no unique
+ *      index on (goal_id, weekly_check_in_id) — index is Phase-3 follow-up).
  *
  * Responses: { ok: true, proposal_id } on success; 401 unauth; 400 validation
  * (incl. a 'skipped' triggering check-in); 404 goal/check-in not found; 409
@@ -180,10 +188,12 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(ERR_GOAL_NOT_FOUND, { status: 404 });
   }
 
-  // Resolve the trigger payload + the fill-vs-create target BEFORE spending a
-  // model call: a decided proposal 409s here with zero AI cost.
+  // Resolve the trigger payload BEFORE spending a model call, and reject the
+  // already-rejectable cheaply: a decided proposal 409s here with zero AI
+  // cost. This read is an early rejection ONLY — the authoritative
+  // fill-vs-create resolution happens inside the locked transaction below,
+  // because the row can change during the multi-second model call.
   let trigger: ReplanTriggerPayload;
-  let pendingProposalId: string | null = null;
   let checkInId: string | null = null;
 
   if (body.trigger === "weekly_check_in") {
@@ -213,11 +223,8 @@ export async function POST(req: Request): Promise<Response> {
       ),
     });
     const existing = proposalRows[0];
-    if (existing) {
-      if (existing.status !== "pending") {
-        return new Response(ERR_DECIDED, { status: 409 });
-      }
-      pendingProposalId = existing.id;
+    if (existing && existing.status !== "pending") {
+      return new Response(ERR_DECIDED, { status: 409 });
     }
   } else {
     trigger = {
@@ -307,33 +314,72 @@ export async function POST(req: Request): Promise<Response> {
 
     // Persist ONLY after a valid diff exists (AC: a failed generation never
     // corrupts the proposal — the pending row keeps its prior diff and the
-    // create path writes nothing).
-    let proposalId: string;
-    if (pendingProposalId !== null) {
-      const updated = await sdb.update(replan_proposals, {
-        set: { proposed_changes: diff, updated_at: new Date() },
-        where: eq(replan_proposals.id, pendingProposalId),
-      });
-      if (updated.length === 0) {
-        // Vanished (or was decided) mid-flight — nothing was written.
-        throw new Error(
-          `replan proposal ${pendingProposalId} no longer updatable — write aborted`,
-        );
-      }
-      proposalId = pendingProposalId;
-    } else {
-      const inserted = await sdb.insert(replan_proposals, {
-        goal_id: goal.id,
-        user_id: userId,
-        trigger: body.trigger,
-        weekly_check_in_id: checkInId,
-        proposed_changes: diff,
-        status: "pending",
-      });
-      proposalId = inserted[0]!.id;
-    }
+    // create path writes nothing), and ONLY inside one transaction serialized
+    // by the per-user "replan" advisory lock. Generation deliberately ran
+    // OUTSIDE the lock: it is a multi-second model call, and holding the lock
+    // across it would serialize the parallel multi-goal fan-out Slice 3
+    // builds on. The price is that the pre-generation reads are stale by
+    // model-latency, so the fill-vs-create target is re-resolved
+    // authoritatively HERE, under the lock.
+    type PersistOutcome =
+      | { kind: "ok"; proposalId: string }
+      | { kind: "decided" };
+    const outcome = await sdb.transaction(
+      async (tx): Promise<PersistOutcome> => {
+        await tx.lockScope("replan");
 
-    return Response.json({ ok: true, proposal_id: proposalId });
+        if (checkInId !== null) {
+          // weekly_check_in: re-select the (goal, check-in) proposal under
+          // the lock — it may have been created or decided mid-generation.
+          const currentRows = await tx.selectFrom(replan_proposals, {
+            where: and(
+              eq(replan_proposals.goal_id, goal.id),
+              eq(replan_proposals.weekly_check_in_id, checkInId),
+            ),
+          });
+          const current = currentRows[0];
+          if (current) {
+            if (current.status !== "pending") return { kind: "decided" };
+            // Belt-and-braces: the WHERE also pins status='pending', so a
+            // decision committed between the read above and this statement
+            // (READ COMMITTED sees it) updates ZERO rows instead of
+            // overwriting a decided row.
+            const updated = await tx.update(replan_proposals, {
+              set: { proposed_changes: diff, updated_at: new Date() },
+              where: and(
+                eq(replan_proposals.id, current.id),
+                eq(replan_proposals.status, "pending"),
+              ),
+            });
+            // Zero rows ⇔ no longer a pending row (decided, or deleted with
+            // its goal) — nothing was written; the decided contract answer
+            // (409, row untouched) covers both honestly.
+            if (updated.length === 0) return { kind: "decided" };
+            return { kind: "ok", proposalId: current.id };
+          }
+        }
+
+        // First proposal for this trigger (weekly with no row yet, or
+        // structural_edit which ALWAYS creates) — the held lock closes the
+        // duplicate-insert window: replan_proposals has no unique index on
+        // (goal_id, weekly_check_in_id), so concurrent first-time POSTs
+        // queue here instead of double-inserting.
+        const inserted = await tx.insert(replan_proposals, {
+          goal_id: goal.id,
+          user_id: userId,
+          trigger: body.trigger,
+          weekly_check_in_id: checkInId,
+          proposed_changes: diff,
+          status: "pending",
+        });
+        return { kind: "ok", proposalId: inserted[0]!.id };
+      },
+    );
+
+    if (outcome.kind === "decided") {
+      return new Response(ERR_DECIDED, { status: 409 });
+    }
+    return Response.json({ ok: true, proposal_id: outcome.proposalId });
   } catch (err) {
     if (err instanceof ReplanUnavailableError) {
       return new Response(ERR_UNAVAILABLE, { status: 503 });

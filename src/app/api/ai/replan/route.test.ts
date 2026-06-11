@@ -19,7 +19,13 @@
  *     diff; the create path writes no row);
  *   - a missing client (ReplanUnavailableError) → 503;
  *   - the generate args carry the check-in feeling/notes (or the structural
- *     summary) and the resolved intensity.
+ *     summary) and the resolved intensity;
+ *   - the persist runs INSIDE one transaction holding lockScope("replan")
+ *     (writes outside it throw in the mock), with generation OUTSIDE the
+ *     lock (parallel fan-out property); the locked re-select is the
+ *     AUTHORITY — a proposal decided during the model call → 409 with zero
+ *     writes, and the regenerate UPDATE's where pins status='pending'
+ *     (belt-and-braces: zero rows updated → 409, never a thrown 502).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -82,12 +88,16 @@ let getSelfResult: {
 let goalRows: Array<Record<string, unknown>> = [];
 let checkInRows: Array<Record<string, unknown>> = [];
 let proposalRows: Array<Record<string, unknown>> = [];
+// The locked re-select's answer; null → same rows as the pre-check select.
+// Tests set it to simulate the proposal changing during the model call.
+let txProposalRows: Array<Record<string, unknown>> | null = null;
 let intakeRows: Array<Record<string, unknown>> = [];
 let taskRows: Array<Record<string, unknown>> = [];
 let milestoneRows: Array<Record<string, unknown>> = [];
 let equipmentRows: Array<Record<string, unknown>> = [];
 let completionRows: Array<Record<string, unknown>> = [];
 
+const lockScopes: string[] = [];
 const inserts: Array<{ table: unknown; values: Record<string, unknown> }> = [];
 const updates: Array<{
   table: unknown;
@@ -116,20 +126,43 @@ vi.mock("@/db/scoped", async () => {
           if (table === schema.task_completions) return completionRows;
           throw new Error("unexpected table in selectFrom mock");
         }),
-        insert: vi.fn(
-          async (table: unknown, values: Record<string, unknown>) => {
-            inserts.push({ table, values });
-            return [{ id: "inserted-proposal-id", ...values }];
-          },
-        ),
-        update: vi.fn(
-          async (
-            table: unknown,
-            opts: { set: Record<string, unknown>; where: unknown },
-          ) => {
-            updates.push({ table, set: opts.set, where: opts.where });
-            return updateReturns ?? [{ id: "updated-proposal-id" }];
-          },
+        // Proposal writes are race-prone check-then-writes: they must run
+        // inside the locked transaction below. A write on the bare binding
+        // is a regression — fail loudly.
+        insert: vi.fn(async () => {
+          throw new Error("writes must run inside the locked transaction");
+        }),
+        update: vi.fn(async () => {
+          throw new Error("writes must run inside the locked transaction");
+        }),
+        transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            lockScope: vi.fn(async (ns: string) => {
+              callOrder.push("lockScope");
+              lockScopes.push(ns);
+            }),
+            selectFrom: vi.fn(async (table: unknown) => {
+              if (table === schema.replan_proposals) {
+                return txProposalRows ?? proposalRows;
+              }
+              throw new Error("unexpected table in tx selectFrom mock");
+            }),
+            insert: vi.fn(
+              async (table: unknown, values: Record<string, unknown>) => {
+                inserts.push({ table, values });
+                return [{ id: "inserted-proposal-id", ...values }];
+              },
+            ),
+            update: vi.fn(
+              async (
+                table: unknown,
+                opts: { set: Record<string, unknown>; where: unknown },
+              ) => {
+                updates.push({ table, set: opts.set, where: opts.where });
+                return updateReturns ?? [{ id: "updated-proposal-id" }];
+              },
+            ),
+          }),
         ),
       };
     }),
@@ -137,6 +170,9 @@ vi.mock("@/db/scoped", async () => {
 });
 
 // --- import under test (after mocks) --------------------------------------
+
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 import { replan_proposals, usage_counters } from "@/db/schema";
 import {
@@ -180,6 +216,14 @@ function realCheckIn(over?: Record<string, unknown>) {
   };
 }
 
+/** Compile a recorded drizzle where-expression into inspectable SQL+params —
+ *  how the where CONTENT (e.g. the status='pending' predicate) gets pinned. */
+const pgDialect = new PgDialect();
+function compiledWhere(where: unknown): { sql: string; params: unknown[] } {
+  const query = pgDialect.sqlToQuery(where as SQL);
+  return { sql: query.sql, params: query.params };
+}
+
 function post(body: unknown): Promise<Response> {
   return POST(
     new Request("http://localhost/api/ai/replan", {
@@ -208,11 +252,13 @@ beforeEach(() => {
   goalRows = [activeGoal()];
   checkInRows = [realCheckIn()];
   proposalRows = [];
+  txProposalRows = null;
   intakeRows = [];
   taskRows = [];
   milestoneRows = [];
   equipmentRows = [];
   completionRows = [];
+  lockScopes.length = 0;
   inserts.length = 0;
   updates.length = 0;
   updateReturns = null;
@@ -344,6 +390,13 @@ describe("POST /api/ai/replan — fill-vs-create", () => {
     expect(updates[0]!.set.updated_at).toBeInstanceOf(Date);
     // Regeneration never re-decides: status stays whatever it was (pending).
     expect("status" in updates[0]!.set).toBe(false);
+    // The UPDATE runs under the per-user replan lock, and its where pins
+    // BOTH the row id AND status='pending' (belt-and-braces: a decided row
+    // can never be overwritten even if it was decided after the locked read).
+    expect(lockScopes).toEqual(["replan"]);
+    const where = compiledWhere(updates[0]!.where);
+    expect(where.sql).toMatch(/"status"\s*=/);
+    expect(where.params).toEqual([PROPOSAL_ID, "pending"]);
   });
 
   it("decided row → 409, row untouched, ZERO model calls", async () => {
@@ -382,6 +435,77 @@ describe("POST /api/ai/replan — fill-vs-create", () => {
       proposed_changes: VALID_DIFF,
       status: "pending",
     });
+    // The first-time insert runs inside the lockScope("replan") transaction —
+    // concurrent first-time POSTs queue instead of double-inserting (no
+    // unique index on (goal_id, weekly_check_in_id)) — while the model call
+    // stays OUTSIDE the lock (the parallel fan-out property).
+    expect(lockScopes).toEqual(["replan"]);
+    expect(callOrder.indexOf("generateReplan")).toBeLessThan(
+      callOrder.indexOf("lockScope"),
+    );
+  });
+
+  it("a proposal CREATED during the model call is filled (UPDATE), never duplicated — the locked re-select is the authority", async () => {
+    proposalRows = []; // pre-check: no row yet
+    txProposalRows = [
+      {
+        id: PROPOSAL_ID,
+        goal_id: GOAL_ID,
+        weekly_check_in_id: CHECK_IN_ID,
+        status: "pending",
+        proposed_changes: EMPTY_REPLAN_DIFF,
+      },
+    ];
+    const res = await post(weeklyBody);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, proposal_id: PROPOSAL_ID });
+    expect(inserts).toHaveLength(0);
+    expect(updates).toHaveLength(1);
+  });
+
+  it("409 when the proposal is DECIDED during the model call — zero writes despite the spent generation", async () => {
+    proposalRows = [
+      {
+        id: PROPOSAL_ID,
+        goal_id: GOAL_ID,
+        weekly_check_in_id: CHECK_IN_ID,
+        status: "pending",
+        proposed_changes: EMPTY_REPLAN_DIFF,
+      },
+    ];
+    // Pre-check saw pending (so generation ran), but by persist time the
+    // locked re-select sees a decided row.
+    txProposalRows = [
+      {
+        id: PROPOSAL_ID,
+        goal_id: GOAL_ID,
+        weekly_check_in_id: CHECK_IN_ID,
+        status: "accepted",
+      },
+    ];
+    const res = await post(weeklyBody);
+    expect(res.status).toBe(409);
+    expect(await res.text()).toBe("Replan proposal already decided.");
+    expect(generateCalls).toHaveLength(1); // the race spent a model call…
+    expect(updates).toHaveLength(0); // …but the decided row stays untouched
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("409 (never an overwrite) when the locked UPDATE matches zero rows — the status predicate refused a just-decided row", async () => {
+    proposalRows = [
+      {
+        id: PROPOSAL_ID,
+        goal_id: GOAL_ID,
+        weekly_check_in_id: CHECK_IN_ID,
+        status: "pending",
+      },
+    ];
+    updateReturns = []; // decided between the locked read and the UPDATE
+    const res = await post(weeklyBody);
+    expect(res.status).toBe(409);
+    expect(await res.text()).toBe("Replan proposal already decided.");
+    expect(inserts).toHaveLength(0);
+    expect(loggedAiErrors).toHaveLength(0); // contract answer, not a failure
   });
 
   it("structural_edit → ALWAYS inserts a new row with NULL weekly_check_in_id", async () => {
@@ -396,6 +520,9 @@ describe("POST /api/ai/replan — fill-vs-create", () => {
       proposed_changes: VALID_DIFF,
       status: "pending",
     });
+    // Same serialization as the weekly path: every proposal write holds the
+    // per-user replan lock.
+    expect(lockScopes).toEqual(["replan"]);
   });
 });
 
@@ -500,6 +627,8 @@ describe("POST /api/ai/replan — failure mapping", () => {
     expect(await res.text()).toBe("Replan generation failed.");
     expect(updates).toHaveLength(0);
     expect(inserts).toHaveLength(0);
+    // A failed generation never even opens the persist transaction.
+    expect(lockScopes).toHaveLength(0);
     expect(loggedAiErrors).toHaveLength(1);
     expect(loggedAiErrors[0]!.op).toBe("replan");
     const message = (loggedAiErrors[0]!.err as Error).message;
@@ -524,20 +653,5 @@ describe("POST /api/ai/replan — failure mapping", () => {
     expect(await res.text()).toBe("AI service unavailable.");
     expect(loggedAiErrors).toHaveLength(0);
     expect(inserts).toHaveLength(0);
-  });
-
-  it("502 (not a silent ok) when the pending row vanishes during the update", async () => {
-    proposalRows = [
-      {
-        id: PROPOSAL_ID,
-        goal_id: GOAL_ID,
-        weekly_check_in_id: CHECK_IN_ID,
-        status: "pending",
-      },
-    ];
-    updateReturns = []; // ownership/scope returned nothing
-    const res = await post(weeklyBody);
-    expect(res.status).toBe(502);
-    expect(loggedAiErrors).toHaveLength(1);
   });
 });
