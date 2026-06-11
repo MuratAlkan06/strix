@@ -7,6 +7,8 @@
  *   - src/app/api/webhooks/*      (Clerk/Stripe webhook handlers)
  *   - src/lib/auth/lifecycle.ts   (soft-delete write + login recovery —
  *                                  must see soft-deleted users)
+ *   - src/db/scoped.integration.test.ts (env-gated live-DB test — fixture
+ *                                  user lifecycle + residue checks only)
  *
  * If you reach for this from anywhere else, you almost certainly want
  * scopedDb(userId) from "@/db/scoped" instead (including getSelf()/

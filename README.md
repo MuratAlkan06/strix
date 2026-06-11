@@ -68,9 +68,10 @@ proves ownership (and that the user isn't soft-deleted) — zero rows inserted
 means the proof failed and scopedDb throws.
 
 The escape hatch `unscopedDb` (in `@/db/unscoped`) is allowed only in
-`src/lib/inngest/**`, `src/app/api/webhooks/**`, and
-`src/lib/auth/lifecycle.ts` (Phase 4's soft-delete + recovery module). CI
-enforces this:
+`src/lib/inngest/**`, `src/app/api/webhooks/**`,
+`src/lib/auth/lifecycle.ts` (Phase 4's soft-delete + recovery module), and
+`src/db/scoped.integration.test.ts` (env-gated live-DB test — fixture user
+lifecycle + residue checks only). CI enforces this:
 
 ```bash
 pnpm ci:check-unscoped
@@ -165,6 +166,7 @@ src/
 │   ├── client.ts                    # drizzle + neon-http (private; Layer 2/4 guarded)
 │   ├── scoped.ts                    # scopedDb(userId) — atomic inserts, self accessors
 │   ├── scoped.test.ts               # synchronous-guard unit tests
+│   ├── scoped.integration.test.ts   # live-DB proofs (env-gated on DATABASE_URL)
 │   ├── unscoped.ts                  # escape hatch (CI-restricted)
 │   └── migrate.ts                   # prod migration runner
 ├── lib/

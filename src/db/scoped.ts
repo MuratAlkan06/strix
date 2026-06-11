@@ -34,8 +34,9 @@
  * If you need a genuinely cross-user query (webhook, Inngest job) or must
  * bypass the soft-delete filter (account lifecycle), import `unscopedDb`
  * from "@/db/unscoped". A CI check (scripts/check-unscoped-db.mjs) restricts
- * those imports to lib/inngest/*, app/api/webhooks/*, and
- * lib/auth/lifecycle.ts.
+ * those imports to lib/inngest/*, app/api/webhooks/*,
+ * lib/auth/lifecycle.ts, and the fixture lifecycle of the env-gated
+ * db/scoped.integration.test.ts.
  */
 import {
   and,
