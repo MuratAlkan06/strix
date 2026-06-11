@@ -37,6 +37,7 @@ import {
   addEquipment,
   addMilestone,
   addTask,
+  completeGoal,
   moveMilestone,
   removeEquipment,
   removeMilestone,
@@ -52,6 +53,7 @@ export const dynamic = "force-dynamic";
 
 const ACTIONS: GoalDetailActions = {
   setIntensity: setGoalIntensity,
+  completeGoal,
   addTask,
   updateTask,
   removeTask,
@@ -107,6 +109,7 @@ export default async function GoalDetailPage({ params }: PageProps) {
     goal,
     intakeConfirmed: summaries[0]?.confirmed_intensity ?? null,
     accountPreference: self?.intensity_preference ?? null,
+    activityType: summaries[0]?.activity_type ?? null,
     tasks,
     milestones: milestoneRows,
     equipment: equipmentRows,

@@ -158,6 +158,7 @@ export default async function PlaygroundGoalDetailPage({
     },
     intakeConfirmed: "challenging",
     accountPreference: "comfortable",
+    activityType: "mountaineering", // → the mountain scene variant
     tasks: TASKS,
     milestones: MILESTONES,
     equipment: EQUIPMENT,

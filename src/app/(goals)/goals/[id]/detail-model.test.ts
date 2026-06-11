@@ -276,6 +276,7 @@ describe("buildGoalDetailModel", () => {
     goal: GOAL,
     intakeConfirmed: "challenging",
     accountPreference: "comfortable",
+    activityType: "mountaineering",
     tasks: TASKS,
     milestones: MILESTONES,
     equipment: EQUIPMENT,
@@ -287,6 +288,23 @@ describe("buildGoalDetailModel", () => {
     expect(model.colorIndex).toBe(2);
     expect(model.targetDate).toBe("2027-07-15");
     expect(model.intensity).toEqual({ value: "challenging", source: "intake" });
+  });
+
+  it("maps the intake activity_type to the goal's scene variant", () => {
+    expect(model.sceneVariant).toBe("mountain");
+  });
+
+  it("no intake summary (activityType null) → the default scene variant", () => {
+    const noSummary = buildGoalDetailModel({
+      goal: GOAL,
+      intakeConfirmed: null,
+      accountPreference: null,
+      activityType: null,
+      tasks: [],
+      milestones: [],
+      equipment: [],
+    });
+    expect(noSummary.sceneVariant).toBe("mountain");
   });
 
   it("excludes removed (active=false) tasks and splits daily/weekly in creation order", () => {
@@ -328,6 +346,7 @@ describe("buildGoalDetailModel", () => {
       goal: { ...GOAL, intensity_override: "brutal" },
       intakeConfirmed: "challenging",
       accountPreference: "comfortable",
+      activityType: "mountaineering",
       tasks: [],
       milestones: [],
       equipment: [],

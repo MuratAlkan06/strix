@@ -25,6 +25,7 @@ export function GoalDetailHarness({ model }: { model: GoalDetailModel }) {
 
   const actions: GoalDetailActions = {
     setIntensity: async () => ({ ok: true }),
+    completeGoal: async () => ({ ok: true }),
     addTask: async () => ({ ok: true, id: nextId() }),
     updateTask: async () => ({ ok: true }),
     removeTask: async () => ({ ok: true }),

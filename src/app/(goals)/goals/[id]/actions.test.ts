@@ -18,6 +18,8 @@
  *   - revalidatePath fires only after a successful write.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 
 import {
   equipment,
@@ -104,6 +106,7 @@ import {
   addEquipment,
   addMilestone,
   addTask,
+  completeGoal,
   moveMilestone,
   removeEquipment,
   removeMilestone,
@@ -216,6 +219,90 @@ describe("setGoalIntensity — explicit change writes the override", () => {
     expect(updates).toHaveLength(1);
     expect(updates[0]!.set.intensity_override).toBe("challenging");
   });
+});
+
+// ---------------------------------------------------------------------------
+// completeGoal — active → completed transition + the idempotent guard
+// ---------------------------------------------------------------------------
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+describe("completeGoal — guards reject with zero writes", () => {
+  it("no auth → failure, no DB call", async () => {
+    mockUserId = null;
+    const result = await completeGoal({ goalId: GOAL_ID });
+    expect(result).toMatchObject({ ok: false });
+    zeroDbCalls();
+  });
+
+  it.each(["", "goal-1", "' OR 1=1 --"])(
+    "malformed goal id (%j) → failure, no DB call",
+    async (id) => {
+      const result = await completeGoal({ goalId: id });
+      expect(result).toMatchObject({ ok: false });
+      zeroDbCalls();
+    },
+  );
+
+  it("non-active goal (status guard → zero rows) → ok:false, row untouched, no revalidate", async () => {
+    // The WHERE's status='active' condition makes a completed or archived
+    // goal match zero rows — the idempotent guard: nothing rewrites
+    // completed_at/auto_archive_at on a second invocation.
+    updateResult = [];
+    const result = await completeGoal({ goalId: GOAL_ID });
+    expect(result).toEqual({ ok: false, error: "We couldn't find that item." });
+    expect(revalidated).toHaveLength(0);
+  });
+
+  it("foreign/unknown goal (scope filter → zero rows) → same calm failure", async () => {
+    updateResult = [];
+    const result = await completeGoal({ goalId: GOAL_ID });
+    expect(result).toEqual({ ok: false, error: "We couldn't find that item." });
+  });
+});
+
+describe("completeGoal — the transition writes the contract's exact fields", () => {
+  it("sets status/completed_at/auto_archive_at/archive_reason in one update", async () => {
+    const before = Date.now();
+    const result = await completeGoal({ goalId: GOAL_ID });
+    const after = Date.now();
+
+    expect(result).toEqual({ ok: true });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.table).toBe(goals);
+
+    const set = updates[0]!.set;
+    expect(set.status).toBe("completed");
+    expect(set.archive_reason).toBe("user_action");
+    expect(set.completed_at).toBeInstanceOf(Date);
+    expect(set.auto_archive_at).toBeInstanceOf(Date);
+    expect(set.updated_at).toBeInstanceOf(Date);
+
+    const completedAt = (set.completed_at as Date).getTime();
+    expect(completedAt).toBeGreaterThanOrEqual(before);
+    expect(completedAt).toBeLessThanOrEqual(after);
+    // auto_archive_at = completed_at + EXACTLY 7 days (the field math).
+    expect((set.auto_archive_at as Date).getTime() - completedAt).toBe(
+      SEVEN_DAYS_MS,
+    );
+  });
+
+  it("the WHERE transitions ONLY from status='active' (id + status, both in the clause)", async () => {
+    await completeGoal({ goalId: GOAL_ID });
+    const { sql, params } = new PgDialect().sqlToQuery(
+      updates[0]!.where as SQL,
+    );
+    expect(sql).toBe('("goals"."id" = $1 and "goals"."status" = $2)');
+    expect(params).toEqual([GOAL_ID, "active"]);
+  });
+
+  it("revalidates the detail page, the goals list, and the dashboard after success", async () => {
+    await completeGoal({ goalId: GOAL_ID });
+    expect(revalidated).toEqual(
+      expect.arrayContaining([`/goals/${GOAL_ID}`, "/goals", "/dashboard"]),
+    );
+  });
+
 });
 
 // ---------------------------------------------------------------------------
