@@ -15,8 +15,14 @@
  * Composition notes:
  *   - Header: h1 title, GoalChip color attribution paired with the palette
  *     name (color never the sole signal), target date, intensity control.
- *     No scene tile here — the goals-list precedent (a later design pass;
- *     nothing decorative invented in this slice).
+ *     No static scene tile — but completing the goal mounts the ONE animated
+ *     moment (CompletionScene, DESIGN.md §4.3) in the header's scene area:
+ *     "Mark complete" (active goals only) uses a two-tap inline confirm (the
+ *     EditorFrame Cancel/primary chrome — completion is not reversible
+ *     in-product), then the sunrise plays over the goal's scene variant and
+ *     the header flips to the existing non-active status treatment. No
+ *     confetti, no redirect mid-animation; on the next load the page renders
+ *     the settled completed state without the scene.
  *   - Intensity control: three explicit options; the effective intensity is
  *     the active selection; the support line states what it follows. A click
  *     is an explicit override write — including picking the value already
@@ -37,6 +43,7 @@ import { Check, ChevronDown, ChevronUp, CircleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CompletionScene } from "@/components/completion-scene";
 import { GoalChip } from "@/components/goal-chip";
 import { GOAL_COLOR_NAMES } from "@/lib/goal-colors";
 import { formatDate, formatUsd } from "@/lib/format";
@@ -87,15 +94,29 @@ interface GoalDetailProps {
   actions: GoalDetailActions;
   /** Raw NEXT_PUBLIC_REPLAN_ENABLED value (gate opens only on "true"). */
   replanFlag: string | undefined;
+  /** Playground-only: mount with the completion moment already settled (the
+   *  state a user is in right after Mark complete). Real pages omit it — a
+   *  reload of a completed goal renders the plain status treatment. */
+  initialCelebration?: boolean;
 }
 
-export function GoalDetail({ model, actions, replanFlag }: GoalDetailProps) {
+export function GoalDetail({
+  model,
+  actions,
+  replanFlag,
+  initialCelebration = false,
+}: GoalDetailProps) {
   const goalId = model.id;
 
   // Live lists — server truth at render, updated only on confirmed writes.
   const [intensity, setIntensity] = useState<EffectiveIntensity>(
     model.intensity,
   );
+  // Goal status flips locally on a confirmed completeGoal write; celebrating
+  // mounts the CompletionScene for THIS session only (see initialCelebration).
+  const [status, setStatus] = useState(model.status);
+  const [celebrating, setCelebrating] = useState(initialCelebration);
+  const [confirmingComplete, setConfirmingComplete] = useState(false);
   const [daily, setDaily] = useState<TaskItemModel[]>(model.daily);
   const [weekly, setWeekly] = useState<TaskItemModel[]>(model.weekly);
   const [milestones, setMilestones] = useState<MilestoneItemModel[]>(
@@ -180,6 +201,18 @@ export function GoalDetail({ model, actions, replanFlag }: GoalDetailProps) {
     event.preventDefault(); // arrows must not scroll the page
     intensityRefs.current[INTENSITY_LEVELS.indexOf(next)]?.focus();
     void handleIntensity(next);
+  }
+
+  // --- completion (the one signature moment, §4.3) ---------------------------
+
+  async function handleComplete() {
+    const result = await run(() => actions.completeGoal({ goalId }));
+    if (!result.ok) return fail(result);
+    // The status flips first (the non-active treatment shows immediately);
+    // the scene mounts with complete=true and plays the sunrise. No redirect.
+    setConfirmingComplete(false);
+    setStatus("completed");
+    setCelebrating(true);
   }
 
   // --- tasks (daily + weekly) ----------------------------------------------
@@ -433,6 +466,18 @@ export function GoalDetail({ model, actions, replanFlag }: GoalDetailProps) {
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:gap-5 sm:p-6">
       {/* Header ------------------------------------------------------------ */}
       <header className="flex flex-col gap-2">
+        {/* The completion moment — mounts on a confirmed Mark complete and
+            plays the sunrise over the goal's scene (reserved aspect → no CLS
+            while it animates). Reloads of a completed goal skip it. */}
+        {celebrating && (
+          <div className="aspect-[16/10] w-full overflow-hidden rounded-xl border border-border sm:aspect-[2/1]">
+            <CompletionScene
+              variant={model.sceneVariant}
+              complete
+              title={`${model.title} — sunrise on completion`}
+            />
+          </div>
+        )}
         <h1 className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-[28px]">
           {model.title}
         </h1>
@@ -446,12 +491,57 @@ export function GoalDetail({ model, actions, replanFlag }: GoalDetailProps) {
               Target {formatDate(model.targetDate)}
             </span>
           )}
-          {model.status !== "active" && (
+          {status !== "active" && (
             <span className="text-xs text-muted-foreground">
-              {model.status === "completed" ? "Completed" : "Archived"}
+              {status === "completed" ? "Completed" : "Archived"}
             </span>
           )}
         </div>
+
+        {/* Mark complete — active goals only, two-tap inline confirm (the
+            EditorFrame Cancel/primary register: completion is not reversible
+            in-product, so one stray tap never completes a goal). */}
+        {status === "active" && !confirmingComplete && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={() => {
+              setError(null);
+              setConfirmingComplete(true);
+            }}
+            className="mt-1 h-11 min-h-11 w-full px-4 sm:w-fit"
+          >
+            Mark complete
+          </Button>
+        )}
+        {status === "active" && confirmingComplete && (
+          <div className="mt-1 rounded-lg border border-ring bg-accent/20 p-3">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              This wraps the goal up. It moves to your archive a week later.
+            </p>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => setConfirmingComplete(false)}
+                className="h-11 min-h-11 px-3 text-muted-foreground"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending}
+                onClick={() => void handleComplete()}
+                className="h-11 min-h-11 px-4"
+              >
+                {pending ? "Saving" : "Complete goal"}
+              </Button>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Intensity control --------------------------------------------------*/}

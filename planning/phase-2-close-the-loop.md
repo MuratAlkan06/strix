@@ -112,7 +112,7 @@ The AI's response is parsed and validated against this schema before persisting.
 - On click: brief celebration moment (a confetti-free, restrained animation — the goal's scene transitions to sunrise over ~900ms, the sky brightens and the sun rises, then a "Well done." line fades in; `prefers-reduced-motion` → a 250ms sky crossfade instead of the rise; register: serious documentary, not Red Bull — see docs/DESIGN.md §4). Sets `goals.status='completed'`, `completed_at=now`, `auto_archive_at=now + 7 days`, `archive_reason='user_action'`.
 - Inngest function `archiveCompletedGoals`: `{ id: "archive-completed-goals", cron: "0 3 * * *" }`. Finds goals with `status='completed' AND auto_archive_at <= now` (excluding goals whose owner has `users.deleted_at IS NOT NULL`), sets `status='archived'`, `archived_at=now`. (Idempotent.)
 - Inngest function `resetMonthlyUsageCounters`: `{ id: "reset-monthly-usage-counters", cron: "0 * * * *" }` (hourly UTC). Registered in Phase 2 with a no-op body that returns immediately if no users are in a local-midnight-just-crossed window; Phase 3 fills out the body. Hourly cadence catches every timezone's local-month boundary.
-- Inngest function `sweepExpiredGoalDrafts`: `{ id: "sweep-expired-goal-drafts", cron: "0 4 * * *" }`. Deletes `goal_drafts` where `expires_at < now()`.
+- Inngest function `sweepExpiredGoalDrafts`: already shipped in Phase 0/1 as `{ id: "sweep-expired-goal-drafts", cron: "0 6 * * *" }` (daily 06:00 UTC — off the midnight herd; this doc originally sketched 04:00). Deletes `goal_drafts` where `expires_at < now()`. Not rebuilt in Phase 2.
 
 ### Accomplished section on dashboard
 

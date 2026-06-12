@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * GoalDetailHarness — client wrapper for the playground goal-detail surface.
- * Renders the REAL <GoalDetail /> behind deterministic local actions: every
- * write succeeds without a server or DB, creates mint sequential local ids
- * (pg-new-1, pg-new-2, …) so add flows are exercisable. The replan flag is
- * pinned OFF — the Phase 1 posture (structural edits save normally, no
- * banner anywhere); the gate itself is unit-tested.
+ * GoalCompleteHarness — client wrapper for the playground goal-completion
+ * surface. Renders the REAL <GoalDetail /> behind deterministic local
+ * actions (the goal-detail harness scheme): completeGoal always succeeds, so
+ * "Mark complete" → confirm → sunrise is exercisable end-to-end without a
+ * server or DB. `initialCelebration` pins the settled celebration frame for
+ * the ?state=celebrating screenshots.
  */
 import { useRef } from "react";
 
@@ -16,7 +16,13 @@ import type {
   GoalDetailModel,
 } from "../../(goals)/goals/[id]/detail-model";
 
-export function GoalDetailHarness({ model }: { model: GoalDetailModel }) {
+export function GoalCompleteHarness({
+  model,
+  initialCelebration,
+}: {
+  model: GoalDetailModel;
+  initialCelebration: boolean;
+}) {
   const counter = useRef(0);
   const nextId = () => {
     counter.current += 1;
@@ -38,5 +44,12 @@ export function GoalDetailHarness({ model }: { model: GoalDetailModel }) {
     removeEquipment: async () => ({ ok: true }),
   };
 
-  return <GoalDetail model={model} actions={actions} replanFlag={undefined} />;
+  return (
+    <GoalDetail
+      model={model}
+      actions={actions}
+      replanFlag={undefined}
+      initialCelebration={initialCelebration}
+    />
+  );
 }
