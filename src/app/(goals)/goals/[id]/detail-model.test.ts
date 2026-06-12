@@ -14,11 +14,18 @@
  *   - Replan banner gate: flag !== "true" never renders, regardless of
  *     structural edits; "true" renders only after a structural edit
  *     (verification step 12's automated counterpart).
+ *   - Slice 4 trigger matrix: structuralEditFor fires on exactly the five
+ *     trigger kinds (milestone add/remove, recurring-task add/remove,
+ *     milestone target-date shift) and on NOTHING else — equipment changes,
+ *     renames, weekday/duration tweaks, reorders, intensity all return null.
+ *   - Summary builder: truthful accumulation in edit order, same-milestone
+ *     shift dedupe (net movement; full net-out drops), honest 500-cap.
  */
 import { describe, expect, it } from "vitest";
 
 import {
   buildGoalDetailModel,
+  buildStructuralChangeSummary,
   effectiveIntensity,
   intensitySupportCopy,
   isReadOnlyGoalStatus,
@@ -26,9 +33,13 @@ import {
   nextIntensityOnKey,
   resolveGoalRow,
   shouldShowReplanBanner,
+  structuralEditFor,
+  STRUCTURAL_SUMMARY_MAX,
   type EquipmentRowLike,
+  type GoalDetailEdit,
   type GoalRowLike,
   type MilestoneRowLike,
+  type StructuralEdit,
   type TaskRowLike,
 } from "./detail-model";
 
@@ -379,6 +390,283 @@ describe("shouldShowReplanBanner — the Phase 2 flag gate", () => {
 
   it('flag "true" after a structural edit → the banner renders (Phase 2 flips this on)', () => {
     expect(shouldShowReplanBanner("true", true)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Slice 4 — the trigger-set classifier (every trigger fires; nothing else)
+// ---------------------------------------------------------------------------
+
+describe("structuralEditFor — the tightened trigger set", () => {
+  it.each([
+    ["daily", "Core and mobility work"],
+    ["weekly", "Long hike with elevation gain"],
+  ] as const)("recurring %s task ADDED → fires", (cadence, title) => {
+    expect(
+      structuralEditFor({ kind: "task_added", cadence, title }),
+    ).toEqual({ kind: "task_added", cadence, title });
+  });
+
+  it.each([
+    ["daily", "Stair climbs"],
+    ["weekly", "Strength session"],
+  ] as const)("recurring %s task REMOVED → fires", (cadence, title) => {
+    expect(
+      structuralEditFor({ kind: "task_removed", cadence, title }),
+    ).toEqual({ kind: "task_removed", cadence, title });
+  });
+
+  it("milestone ADDED → fires with its target date", () => {
+    expect(
+      structuralEditFor({
+        kind: "milestone_added",
+        title: "Build a base",
+        targetDate: "2026-09-01",
+      }),
+    ).toEqual({
+      kind: "milestone_added",
+      title: "Build a base",
+      targetDate: "2026-09-01",
+    });
+  });
+
+  it("milestone REMOVED → fires", () => {
+    expect(
+      structuralEditFor({ kind: "milestone_removed", title: "Build a base" }),
+    ).toEqual({ kind: "milestone_removed", title: "Build a base" });
+  });
+
+  it("milestone update that SHIFTS the target date → fires as target_date_shifted", () => {
+    expect(
+      structuralEditFor({
+        kind: "milestone_updated",
+        milestoneId: "ms-1",
+        title: "Race day",
+        prevTargetDate: "2026-09-01",
+        targetDate: "2026-10-15",
+      }),
+    ).toEqual({
+      kind: "target_date_shifted",
+      milestoneId: "ms-1",
+      title: "Race day",
+      from: "2026-09-01",
+      to: "2026-10-15",
+    });
+  });
+
+  it("milestone update giving a legacy date-less row its first date → fires (from: null)", () => {
+    expect(
+      structuralEditFor({
+        kind: "milestone_updated",
+        milestoneId: "ms-legacy",
+        title: "Old milestone",
+        prevTargetDate: null,
+        targetDate: "2026-10-15",
+      }),
+    ).toEqual({
+      kind: "target_date_shifted",
+      milestoneId: "ms-legacy",
+      title: "Old milestone",
+      from: null,
+      to: "2026-10-15",
+    });
+  });
+
+  it("milestone RENAME with the same date → never fires", () => {
+    expect(
+      structuralEditFor({
+        kind: "milestone_updated",
+        milestoneId: "ms-1",
+        title: "Renamed milestone",
+        prevTargetDate: "2026-09-01",
+        targetDate: "2026-09-01",
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    { kind: "task_updated" }, // rename / weekday / duration tweaks
+    { kind: "milestone_moved" }, // reorder
+    { kind: "equipment_added" },
+    { kind: "equipment_updated" },
+    { kind: "equipment_removed" },
+    { kind: "intensity_changed" },
+  ] as GoalDetailEdit[])("$kind → NEVER fires", (edit) => {
+    expect(structuralEditFor(edit)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Slice 4 — the truthful session summary
+// ---------------------------------------------------------------------------
+
+describe("buildStructuralChangeSummary — accumulation, dedupe, 500-cap", () => {
+  const shift = (
+    milestoneId: string,
+    from: string | null,
+    to: string,
+    title = "Race day",
+  ): StructuralEdit => ({
+    kind: "target_date_shifted",
+    milestoneId,
+    title,
+    from,
+    to,
+  });
+
+  it("no structural edits → empty (the banner stays down)", () => {
+    expect(buildStructuralChangeSummary([])).toBe("");
+  });
+
+  it("accumulates plain sentences in edit order (the contract's register)", () => {
+    expect(
+      buildStructuralChangeSummary([
+        { kind: "task_removed", cadence: "weekly", title: "Long run" },
+        shift("ms-1", "2026-09-01", "2026-10-15"),
+      ]),
+    ).toBe(
+      'Removed weekly session "Long run". ' +
+        'Moved milestone "Race day" target date from 2026-09-01 to 2026-10-15.',
+    );
+  });
+
+  it("formats each kind: adds carry their date, daily/weekly are named honestly", () => {
+    expect(
+      buildStructuralChangeSummary([
+        { kind: "milestone_added", title: "Build a base", targetDate: "2026-09-01" },
+        { kind: "milestone_removed", title: "Shakedown" },
+        { kind: "task_added", cadence: "daily", title: "Core work" },
+      ]),
+    ).toBe(
+      'Added milestone "Build a base" (target 2026-09-01). ' +
+        'Removed milestone "Shakedown". Added daily habit "Core work".',
+    );
+  });
+
+  it("a first date on a legacy date-less milestone reads as Set, not Moved", () => {
+    expect(buildStructuralChangeSummary([shift("ms-1", null, "2026-10-15")])).toBe(
+      'Set milestone "Race day" target date to 2026-10-15.',
+    );
+  });
+
+  it("blank titles surface as Untitled, never an empty quote", () => {
+    expect(
+      buildStructuralChangeSummary([
+        { kind: "task_removed", cadence: "daily", title: "  " },
+      ]),
+    ).toBe('Removed daily habit "Untitled".');
+  });
+
+  it("DEDUPE: repeated shifts of the same milestone collapse to the net movement", () => {
+    expect(
+      buildStructuralChangeSummary([
+        shift("ms-1", "2026-09-01", "2026-10-01"),
+        { kind: "task_added", cadence: "weekly", title: "Hill repeats" },
+        shift("ms-1", "2026-10-01", "2026-10-15"),
+      ]),
+    ).toBe(
+      'Added weekly session "Hill repeats". ' +
+        'Moved milestone "Race day" target date from 2026-09-01 to 2026-10-15.',
+    );
+  });
+
+  it("DEDUPE: shifts of DIFFERENT milestones never merge", () => {
+    expect(
+      buildStructuralChangeSummary([
+        shift("ms-1", "2026-09-01", "2026-10-01", "Race day"),
+        shift("ms-2", "2026-12-01", "2027-01-01", "Glacier course"),
+      ]),
+    ).toBe(
+      'Moved milestone "Race day" target date from 2026-09-01 to 2026-10-01. ' +
+        'Moved milestone "Glacier course" target date from 2026-12-01 to 2027-01-01.',
+    );
+  });
+
+  it("NET-OUT: a shift away and back reports nothing — alone or among other edits", () => {
+    const thereAndBack = [
+      shift("ms-1", "2026-09-01", "2026-10-01"),
+      shift("ms-1", "2026-10-01", "2026-09-01"),
+    ];
+    expect(buildStructuralChangeSummary(thereAndBack)).toBe("");
+    expect(
+      buildStructuralChangeSummary([
+        ...thereAndBack,
+        { kind: "milestone_removed", title: "Shakedown" },
+      ]),
+    ).toBe('Removed milestone "Shakedown".');
+  });
+
+  it(`caps at ${STRUCTURAL_SUMMARY_MAX} chars with a visible ellipsis (the endpoint's Zod max)`, () => {
+    const edits: StructuralEdit[] = Array.from({ length: 20 }, (_, i) => ({
+      kind: "task_added",
+      cadence: "weekly",
+      title: `An unusually long session title number ${i} that keeps going on`,
+    }));
+    const summary = buildStructuralChangeSummary(edits);
+    expect(summary.length).toBe(STRUCTURAL_SUMMARY_MAX);
+    expect(summary.endsWith("…")).toBe(true);
+  });
+
+  it("under the cap → untouched, no ellipsis", () => {
+    const summary = buildStructuralChangeSummary([
+      { kind: "task_added", cadence: "daily", title: "Core work" },
+    ]);
+    expect(summary.length).toBeLessThan(STRUCTURAL_SUMMARY_MAX);
+    expect(summary.endsWith("…")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Slice 4 — the full gate composition the view renders with
+// ---------------------------------------------------------------------------
+
+describe("banner gate composition — flag-off never, read-only never, net-zero never", () => {
+  const armed = (edits: readonly StructuralEdit[]) =>
+    buildStructuralChangeSummary(edits) !== "";
+  const oneEdit: StructuralEdit[] = [
+    { kind: "milestone_removed", title: "Shakedown" },
+  ];
+
+  it("structural edits + flag OFF → no banner", () => {
+    expect(shouldShowReplanBanner(undefined, armed(oneEdit))).toBe(false);
+    expect(shouldShowReplanBanner("false", armed(oneEdit))).toBe(false);
+  });
+
+  it("structural edits + flag on + READ-ONLY goal → no banner (the slice-6 gate)", () => {
+    const readOnly = isReadOnlyGoalStatus("completed");
+    expect(!readOnly && shouldShowReplanBanner("true", armed(oneEdit))).toBe(
+      false,
+    );
+  });
+
+  it("net-zero session (shift there and back) + flag on + active → no banner", () => {
+    const netZero: StructuralEdit[] = [
+      {
+        kind: "target_date_shifted",
+        milestoneId: "ms-1",
+        title: "Race day",
+        from: "2026-09-01",
+        to: "2026-10-01",
+      },
+      {
+        kind: "target_date_shifted",
+        milestoneId: "ms-1",
+        title: "Race day",
+        from: "2026-10-01",
+        to: "2026-09-01",
+      },
+    ];
+    const readOnly = isReadOnlyGoalStatus("active");
+    expect(!readOnly && shouldShowReplanBanner("true", armed(netZero))).toBe(
+      false,
+    );
+  });
+
+  it("structural edits + flag on + active → the banner renders", () => {
+    const readOnly = isReadOnlyGoalStatus("active");
+    expect(!readOnly && shouldShowReplanBanner("true", armed(oneEdit))).toBe(
+      true,
+    );
   });
 });
 

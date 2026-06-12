@@ -16,8 +16,11 @@
  *     into the same null — the page renders one indistinguishable notFound().
  *   - REPLAN BANNER GATE: shouldShowReplanBanner is true only when
  *     NEXT_PUBLIC_REPLAN_ENABLED === "true" AND a structural edit landed.
- *     Phase 1 ships with the flag absent/false, so structural edits save
- *     normally with no banner anywhere; Phase 2 flips the env var.
+ *     Phase 1 shipped with the flag absent/false; Phase 2 slice 4 flips the
+ *     env var and TIGHTENS "structural" to the trigger set classified by
+ *     structuralEditFor (milestone add/remove, recurring-task add/remove,
+ *     milestone target-date shift — equipment changes, renames, weekday/
+ *     duration tweaks, reorders, and intensity never trigger).
  *   - Removed tasks (recurring_tasks.active = false) are excluded from the
  *     model — remove is a soft deactivation that preserves task_completions
  *     history, never a hard delete.
@@ -324,23 +327,180 @@ export function buildGoalDetailModel(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Replan banner gate (feature-flagged OFF in Phase 1)
+// Replan banner gate + structural-edit classification (Phase 2 slice 4)
 // ---------------------------------------------------------------------------
 
 /** Phase doc's exact banner line — rendered only when the gate opens. */
 export const REPLAN_BANNER_COPY = "Want me to update the rest of your plan?";
 
+/** The banner's idle action — answers the banner question directly. */
+export const REPLAN_BANNER_ACTION_COPY = "Yes, update it";
+
 /**
- * The gate Phase 2 flips: the banner renders ONLY when the env flag is the
- * literal string "true" AND a structural edit (add/remove/reschedule of
- * tasks/milestones/equipment) landed this session. Absent, empty, "false",
- * or any other value → no banner anywhere (verification step 12).
+ * The gate Phase 2 flipped on: the banner renders ONLY when the env flag is
+ * the literal string "true" AND a structural edit landed this session
+ * (slice 4: one of structuralEditFor's trigger kinds with a non-empty net
+ * summary). Absent, empty, "false", or any other value → no banner anywhere.
  */
 export function shouldShowReplanBanner(
   flag: string | undefined,
   structuralEditOccurred: boolean,
 ): boolean {
   return flag === "true" && structuralEditOccurred;
+}
+
+/**
+ * Every edit the goal-detail surface can land, as the view's action handlers
+ * see it. The view reports each confirmed write here; structuralEditFor
+ * decides which ones are "structural" (SPEC §6 + phase-2 doc trigger set).
+ * Non-trigger kinds carry no payload — the classifier never reads it.
+ */
+export type GoalDetailEdit =
+  | { kind: "task_added"; cadence: "daily" | "weekly"; title: string }
+  /** Rename / weekday / duration tweaks — never structural. */
+  | { kind: "task_updated" }
+  | { kind: "task_removed"; cadence: "daily" | "weekly"; title: string }
+  | { kind: "milestone_added"; title: string; targetDate: string }
+  | {
+      kind: "milestone_updated";
+      milestoneId: string;
+      title: string;
+      /** The date before the edit (null on legacy date-less rows). */
+      prevTargetDate: string | null;
+      targetDate: string;
+    }
+  | { kind: "milestone_removed"; title: string }
+  | { kind: "milestone_moved" }
+  | { kind: "equipment_added" }
+  | { kind: "equipment_updated" }
+  | { kind: "equipment_removed" }
+  | { kind: "intensity_changed" };
+
+/** One recorded trigger-set edit — the session log the summary is built from. */
+export type StructuralEdit =
+  | { kind: "task_added"; cadence: "daily" | "weekly"; title: string }
+  | { kind: "task_removed"; cadence: "daily" | "weekly"; title: string }
+  | { kind: "milestone_added"; title: string; targetDate: string }
+  | { kind: "milestone_removed"; title: string }
+  | {
+      kind: "target_date_shifted";
+      milestoneId: string;
+      title: string;
+      from: string | null;
+      to: string;
+    };
+
+/**
+ * THE trigger-set predicate (phase-2 doc "Structural-edit replan banner" +
+ * SPEC §6): milestone added/removed, recurring task added/removed, and a
+ * milestone target-date shift are structural; equipment changes (any),
+ * renames, weekday/duration tweaks, milestone reorders, and intensity
+ * changes are NOT. Returns the structural record to accumulate, or null
+ * when the edit must not arm the banner. A milestone update is structural
+ * only when its date actually moved — a pure rename returns null.
+ */
+export function structuralEditFor(edit: GoalDetailEdit): StructuralEdit | null {
+  switch (edit.kind) {
+    case "task_added":
+    case "task_removed":
+      return { kind: edit.kind, cadence: edit.cadence, title: edit.title };
+    case "milestone_added":
+      return { kind: edit.kind, title: edit.title, targetDate: edit.targetDate };
+    case "milestone_removed":
+      return { kind: edit.kind, title: edit.title };
+    case "milestone_updated":
+      if (edit.targetDate === edit.prevTargetDate) return null; // rename only
+      return {
+        kind: "target_date_shifted",
+        milestoneId: edit.milestoneId,
+        title: edit.title,
+        from: edit.prevTargetDate,
+        to: edit.targetDate,
+      };
+    case "task_updated":
+    case "milestone_moved":
+    case "equipment_added":
+    case "equipment_updated":
+    case "equipment_removed":
+    case "intensity_changed":
+      return null;
+  }
+}
+
+/**
+ * The banner's interaction state: idle (the offer) → generating (quiet,
+ * button disabled) → either a client route to /replan/<goalId> or error
+ * (calm inline line + Try again, no navigation). Plain data so the
+ * playground can mount mid-flight states directly.
+ */
+export type ReplanBannerState =
+  | { kind: "idle" }
+  | { kind: "generating" }
+  | { kind: "error"; error: string };
+
+/** The endpoint's structural_change.summary cap (route Zod: 1..500). */
+export const STRUCTURAL_SUMMARY_MAX = 500;
+
+function untitled(title: string): string {
+  return title.trim() === "" ? "Untitled" : title.trim();
+}
+
+function structuralSentence(edit: StructuralEdit): string {
+  const taskNoun = (cadence: "daily" | "weekly") =>
+    cadence === "daily" ? "daily habit" : "weekly session";
+  switch (edit.kind) {
+    case "task_added":
+      return `Added ${taskNoun(edit.cadence)} "${untitled(edit.title)}".`;
+    case "task_removed":
+      return `Removed ${taskNoun(edit.cadence)} "${untitled(edit.title)}".`;
+    case "milestone_added":
+      return `Added milestone "${untitled(edit.title)}" (target ${edit.targetDate}).`;
+    case "milestone_removed":
+      return `Removed milestone "${untitled(edit.title)}".`;
+    case "target_date_shifted":
+      return edit.from === null
+        ? `Set milestone "${untitled(edit.title)}" target date to ${edit.to}.`
+        : `Moved milestone "${untitled(edit.title)}" target date from ${edit.from} to ${edit.to}.`;
+  }
+}
+
+/**
+ * The truthful session summary POSTed as structural_change.summary. Plain
+ * sentences in edit order. Two honesty rules:
+ *   - DEDUPE: repeated date shifts of the SAME milestone collapse into the
+ *     net movement (first `from` → last `to`), placed at the latest edit's
+ *     position; a shift that lands back where it started nets out and drops
+ *     entirely (the plan ended where it began — nothing to report).
+ *   - CAP: the endpoint takes at most STRUCTURAL_SUMMARY_MAX chars; longer
+ *     accumulations truncate with a visible ellipsis, never silently.
+ * Returns "" when nothing net-structural remains — the banner stays down.
+ */
+export function buildStructuralChangeSummary(
+  edits: readonly StructuralEdit[],
+): string {
+  const net: StructuralEdit[] = [];
+  for (const edit of edits) {
+    if (edit.kind === "target_date_shifted") {
+      const i = net.findIndex(
+        (e) =>
+          e.kind === "target_date_shifted" &&
+          e.milestoneId === edit.milestoneId,
+      );
+      if (i !== -1) {
+        const [prior] = net.splice(i, 1) as [
+          Extract<StructuralEdit, { kind: "target_date_shifted" }>,
+        ];
+        if (prior.from === edit.to) continue; // shifted back — nets out
+        net.push({ ...edit, from: prior.from });
+        continue;
+      }
+    }
+    net.push(edit);
+  }
+  const text = net.map(structuralSentence).join(" ");
+  return text.length > STRUCTURAL_SUMMARY_MAX
+    ? `${text.slice(0, STRUCTURAL_SUMMARY_MAX - 1)}…`
+    : text;
 }
 
 // ---------------------------------------------------------------------------

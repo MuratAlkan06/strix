@@ -34,9 +34,17 @@
  *     milestone move up/down — keyboard-accessible buttons, no drag).
  *   - "Adjust plan": visibly disabled with in-register support text — the
  *     replan flow is Phase 2; no dead-looking active button.
- *   - Replan banner: rendered ONLY when NEXT_PUBLIC_REPLAN_ENABLED === "true"
- *     AND a structural edit landed (shouldShowReplanBanner). Phase 1 ships
- *     flag-off: edits save normally, no banner anywhere.
+ *   - Replan banner (phase 2 slice 4, wired ON): rendered ONLY when
+ *     NEXT_PUBLIC_REPLAN_ENABLED === "true" AND a trigger-set structural
+ *     edit landed (shouldShowReplanBanner over structuralEditFor's session
+ *     log — milestone add/remove, recurring-task add/remove, milestone
+ *     target-date shift; equipment/renames/tweaks/reorders never arm it).
+ *     Every confirmed write reports through recordEdit; the classifier
+ *     decides. Click → POST trigger='structural_edit' with the truthful
+ *     session summary (buildStructuralChangeSummary) → on success client-
+ *     route to /replan/<goalId> (the diff page picks the newest pending
+ *     proposal); on failure a calm inline error + Try again, NO navigation.
+ *     A quiet "Generating" state holds while the call is in flight.
  *   - READ-ONLY GATE (phase 2 slice 6): non-active goals render with zero
  *     edit affordances — no Edit/Add/Remove, no milestone reorder, no
  *     intensity radios (the effective value shows as plain text), no Adjust
@@ -46,6 +54,7 @@
  *     The status badge + quiet header treatment are unchanged.
  */
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Check, ChevronDown, ChevronUp, CircleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -58,18 +67,29 @@ import { INTENSITY_LEVELS } from "@/lib/ai/intake-schema";
 import { intensityLabel } from "../new/intensity-confirm";
 import { WEEKDAY_LABELS } from "../new/review/review-plan";
 import {
+  GENERATE_FALLBACK_ERROR,
+  requestStructuralReplanGeneration,
+  type GenerateOutcome,
+} from "../../../(check-in)/replan/generate-replan-client";
+import {
   ADJUST_PLAN_SUPPORT_COPY,
+  REPLAN_BANNER_ACTION_COPY,
   REPLAN_BANNER_COPY,
+  buildStructuralChangeSummary,
   intensitySupportCopy,
   isReadOnlyGoalStatus,
   nextIntensityOnKey,
   shouldShowReplanBanner,
+  structuralEditFor,
   type EffectiveIntensity,
   type EquipmentItemModel,
   type GoalDetailActions,
+  type GoalDetailEdit,
   type GoalDetailModel,
   type Intensity,
   type MilestoneItemModel,
+  type ReplanBannerState,
+  type StructuralEdit,
   type TaskItemModel,
 } from "./detail-model";
 
@@ -106,6 +126,18 @@ interface GoalDetailProps {
    *  state a user is in right after Mark complete). Real pages omit it — a
    *  reload of a completed goal renders the plain status treatment. */
   initialCelebration?: boolean;
+  /** Playground-only: mount with structural edits already landed (arms the
+   *  replan banner without a live server write). Real pages omit it. */
+  initialStructuralEdits?: StructuralEdit[];
+  /** Playground-only: mount the banner mid-flight or failed — the states a
+   *  click produces. Real pages omit it (the banner starts idle). */
+  initialReplanBannerState?: ReplanBannerState;
+  /** The structural_edit generation caller. Defaults to the real client
+   *  (POST /api/ai/replan); the playground passes a deterministic stub. */
+  onGenerateReplan?: (input: {
+    goalId: string;
+    summary: string;
+  }) => Promise<GenerateOutcome>;
 }
 
 export function GoalDetail({
@@ -113,8 +145,12 @@ export function GoalDetail({
   actions,
   replanFlag,
   initialCelebration = false,
+  initialStructuralEdits = [],
+  initialReplanBannerState = { kind: "idle" },
+  onGenerateReplan = requestStructuralReplanGeneration,
 }: GoalDetailProps) {
   const goalId = model.id;
+  const router = useRouter();
 
   // Live lists — server truth at render, updated only on confirmed writes.
   const [intensity, setIntensity] = useState<EffectiveIntensity>(
@@ -137,9 +173,16 @@ export function GoalDetail({
   const [editing, setEditing] = useState<Editing>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Structural edits (add/remove/reschedule across the four sections) arm the
-  // Phase 2 replan banner; with the flag off it never renders.
-  const [structuralEdited, setStructuralEdited] = useState(false);
+  // The session's trigger-set edit log (slice 4 tightening): every confirmed
+  // write reports through recordEdit; structuralEditFor keeps only the
+  // trigger kinds. The banner arms off the NET summary — with the flag off
+  // it never renders.
+  const [structuralEdits, setStructuralEdits] = useState<StructuralEdit[]>(
+    initialStructuralEdits,
+  );
+  const [bannerState, setBannerState] = useState<ReplanBannerState>(
+    initialReplanBannerState,
+  );
 
   function isEditing(section: Section, id: string | null) {
     return editing?.section === section && editing.id === id;
@@ -172,8 +215,34 @@ export function GoalDetail({
     setError(result.error);
   }
 
-  function structural() {
-    setStructuralEdited(true);
+  /** Report a confirmed write; structuralEditFor decides whether it lands in
+   *  the session log (only trigger-set kinds ever do). */
+  function recordEdit(edit: GoalDetailEdit) {
+    const structural = structuralEditFor(edit);
+    if (structural !== null) {
+      setStructuralEdits((edits) => [...edits, structural]);
+    }
+  }
+
+  // --- replan banner (slice 4: click → structural_edit generation) ---------
+
+  async function handleGenerateReplan(summary: string) {
+    if (bannerState.kind === "generating") return;
+    setBannerState({ kind: "generating" });
+    let result: GenerateOutcome;
+    try {
+      result = await onGenerateReplan({ goalId, summary });
+    } catch {
+      result = { ok: false, error: GENERATE_FALLBACK_ERROR };
+    }
+    if (result.ok) {
+      // The proposal exists server-side — hand over to the diff review page
+      // (it picks the newest pending proposal). Keep the quiet generating
+      // state until the navigation lands; no flicker back to idle.
+      router.push(`/replan/${goalId}`);
+    } else {
+      setBannerState({ kind: "error", error: result.error });
+    }
   }
 
   // --- intensity -----------------------------------------------------------
@@ -289,15 +358,28 @@ export function GoalDetail({
         ),
       );
     }
-    structural();
+    // Add = structural; update (rename / weekday / duration) never is.
+    recordEdit(
+      id === null
+        ? { kind: "task_added", cadence: section, title }
+        : { kind: "task_updated" },
+    );
     setEditing(null);
   }
 
   async function removeTask(section: "daily" | "weekly", id: string) {
+    // The pre-removal list still holds the title (closure state).
+    const removed = (section === "daily" ? daily : weekly).find(
+      (t) => t.id === id,
+    );
     const result = await run(() => actions.removeTask({ goalId, taskId: id }));
     if (!result.ok) return fail(result);
     setTaskList(section)((items) => items.filter((t) => t.id !== id));
-    structural();
+    recordEdit({
+      kind: "task_removed",
+      cadence: section,
+      title: removed?.title ?? "",
+    });
     setEditing(null);
   }
 
@@ -316,6 +398,9 @@ export function GoalDetail({
       setError("Set a target date.");
       return;
     }
+    // Pre-edit row (closure state) — the date-shift classification needs the
+    // previous target date; a pure rename must not arm the banner.
+    const previous = id !== null ? milestones.find((m) => m.id === id) : null;
     if (id === null) {
       const result = await run(() =>
         actions.addMilestone({ goalId, title, targetDate: fields.targetDate }),
@@ -325,6 +410,7 @@ export function GoalDetail({
         ...items,
         { id: result.id, title, targetDate: fields.targetDate, completedOn: null },
       ]);
+      recordEdit({ kind: "milestone_added", title, targetDate: fields.targetDate });
     } else {
       const result = await run(() =>
         actions.updateMilestone({
@@ -340,8 +426,14 @@ export function GoalDetail({
           m.id === id ? { ...m, title, targetDate: fields.targetDate } : m,
         ),
       );
+      recordEdit({
+        kind: "milestone_updated",
+        milestoneId: id,
+        title,
+        prevTargetDate: previous?.targetDate ?? null,
+        targetDate: fields.targetDate,
+      });
     }
-    structural();
     setEditing(null);
   }
 
@@ -363,7 +455,7 @@ export function GoalDetail({
         ),
       );
     }
-    structural();
+    recordEdit({ kind: "milestone_removed", title: milestone?.title ?? "" });
     setEditing(null);
   }
 
@@ -382,7 +474,7 @@ export function GoalDetail({
       setMilestones(prev);
       return fail(result);
     }
-    structural();
+    recordEdit({ kind: "milestone_moved" }); // reorder is never structural
   }
 
   // --- equipment -----------------------------------------------------------
@@ -450,7 +542,10 @@ export function GoalDetail({
         ),
       );
     }
-    structural();
+    // Equipment changes are never structural (the slice-4 trigger set).
+    recordEdit({
+      kind: id === null ? "equipment_added" : "equipment_updated",
+    });
     setEditing(null);
   }
 
@@ -460,7 +555,7 @@ export function GoalDetail({
     );
     if (!result.ok) return fail(result);
     setEquipment((items) => items.filter((e) => e.id !== id));
-    structural();
+    recordEdit({ kind: "equipment_removed" });
     setEditing(null);
   }
 
@@ -470,10 +565,12 @@ export function GoalDetail({
   const milestoneDateById = new Map(milestones.map((m) => [m.id, m.targetDate]));
   // Non-active ⇒ zero edit affordances anywhere (keyed off LOCAL status so a
   // just-completed goal settles read-only in-session). The banner is gated
-  // too: a finished goal has no plan left to update.
+  // too: a finished goal has no plan left to update. It arms off the NET
+  // summary — a session whose shifts net out (A→B→A) has nothing to replan.
   const readOnly = isReadOnlyGoalStatus(status);
+  const structuralSummary = buildStructuralChangeSummary(structuralEdits);
   const showBanner =
-    !readOnly && shouldShowReplanBanner(replanFlag, structuralEdited);
+    !readOnly && shouldShowReplanBanner(replanFlag, structuralSummary !== "");
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:gap-5 sm:p-6">
@@ -638,18 +735,14 @@ export function GoalDetail({
         </p>
       )}
 
-      {/* Replan banner — Phase 2 gate; never renders with the flag off ------ */}
+      {/* Replan banner — Phase 2 gate; never renders with the flag off.
+          Slice 4 wires the click: generate a structural_edit proposal, then
+          route to the diff review. Same quiet card chrome as Phase 1. ------ */}
       {showBanner && (
-        <p
-          role="status"
-          className="flex items-start gap-2 rounded-xl border border-border bg-card p-4 text-sm leading-relaxed text-foreground"
-        >
-          <CircleAlert
-            aria-hidden="true"
-            className="mt-0.5 size-4 shrink-0 text-primary"
-          />
-          {REPLAN_BANNER_COPY}
-        </p>
+        <ReplanBanner
+          state={bannerState}
+          onGenerate={() => void handleGenerateReplan(structuralSummary)}
+        />
       )}
 
       {/* Daily habits -------------------------------------------------------*/}
@@ -919,6 +1012,60 @@ export function GoalDetail({
         </div>
       )}
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Replan banner (Phase 1 chrome + the slice-4 action)
+// ---------------------------------------------------------------------------
+
+/**
+ * The structural-edit replan offer. Phase 1's quiet card (same classes, same
+ * copy, same icon) extended with the one action: idle shows the offer,
+ * generating disables it quietly ("Generating" — no spinner chrome, §8),
+ * failure adds a calm muted line and flips the action to "Try again". The
+ * container is the live region (role="status"), so appearing, the generating
+ * flip, and the error line all announce politely without an extra node.
+ */
+function ReplanBanner({
+  state,
+  onGenerate,
+}: {
+  state: ReplanBannerState;
+  onGenerate: () => void;
+}) {
+  const generating = state.kind === "generating";
+  return (
+    <div
+      role="status"
+      className="rounded-xl border border-border bg-card p-4"
+    >
+      <p className="flex items-start gap-2 text-sm leading-relaxed text-foreground">
+        <CircleAlert
+          aria-hidden="true"
+          className="mt-0.5 size-4 shrink-0 text-primary"
+        />
+        {REPLAN_BANNER_COPY}
+      </p>
+      {state.kind === "error" && (
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          {state.error}
+        </p>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        disabled={generating}
+        onClick={onGenerate}
+        className="mt-3 h-11 min-h-11 w-full px-4 sm:w-fit"
+      >
+        {generating
+          ? "Generating"
+          : state.kind === "error"
+            ? "Try again"
+            : REPLAN_BANNER_ACTION_COPY}
+      </Button>
+    </div>
   );
 }
 
