@@ -288,12 +288,18 @@ describe("generateReplan", () => {
       );
       const usageLine = lines.find((l) => l.includes('"ai_usage"'));
       expect(usageLine).toBeDefined();
-      expect(JSON.parse(usageLine!)).toMatchObject({
+      const usage = JSON.parse(usageLine!);
+      expect(usage).toMatchObject({
         event: "ai_usage",
         op: "replan",
         model: MODEL_SONNET,
         cache_read_input_tokens: 1500,
       });
+      // Wall clock around the model call (issue #45) — always present, an
+      // integer ms count.
+      expect(usage.duration_ms).toEqual(expect.any(Number));
+      expect(Number.isInteger(usage.duration_ms)).toBe(true);
+      expect(usage.duration_ms).toBeGreaterThanOrEqual(0);
     } finally {
       info.mockRestore();
     }

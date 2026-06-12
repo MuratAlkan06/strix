@@ -86,6 +86,7 @@ export async function canonicalize(
   const client = getClient();
   if (!client) return null;
 
+  const startedAt = Date.now();
   const message = await client.messages.create({
     model: MODEL_HAIKU,
     max_tokens: 512,
@@ -95,7 +96,14 @@ export async function canonicalize(
     tool_choice: { type: "tool", name: CANONICALIZE_TOOL_NAME },
   });
 
-  logAiUsage(toUsageLog("canonicalize", MODEL_HAIKU, message.usage));
+  logAiUsage(
+    toUsageLog(
+      "canonicalize",
+      MODEL_HAIKU,
+      message.usage,
+      Date.now() - startedAt,
+    ),
+  );
 
   const toolUse = message.content.find(
     (block) => block.type === "tool_use" && block.name === CANONICALIZE_TOOL_NAME,
