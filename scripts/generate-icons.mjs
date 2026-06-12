@@ -8,7 +8,7 @@
  *
  *   node scripts/generate-icons.mjs
  *
- * Concepts (all derive from the SAME owl-mark geometry as
+ * ROUND 1 concepts (all derive from the SAME owl-mark geometry as
  * src/components/emblem.tsx — DESIGN.md §10 seed-grammar requirement; the
  * BODY/FACET path data below is copied verbatim from that component):
  *   v1 "Dusk Perch"  — 2-tone mark (off-white body + amber breast facet) on
@@ -19,6 +19,20 @@
  *                      sky (§4 rules).
  *   v3 "Sun Disc"    — dusk-ink owl inside the amber sun disc on the dusk
  *                      ground. The single point of heat, literally.
+ *
+ * ROUND 2 concepts (curation feedback: the emblem seed reads as a blob at
+ * icon size — round 2 leads with the proven owl signifiers instead: two
+ * large eyes, ear tufts, facial disc. Same palette, same flat-geometric
+ * register; geometry authored directly in the 512 canvas):
+ *   v4 "Watcher"     — reduced geometric owl face front-on: two large pale
+ *                      eyes with dusk pupils, triangular ear tufts, amber
+ *                      beak wedge, on the dusk ground.
+ *   v5 "Disc"        — barn-owl facial disc: pale heart-shaped face (top
+ *                      notch, pointed chin) with two dusk eyes and a narrow
+ *                      amber beak, on the dusk ground.
+ *   v6 "Night Watch" — tufted owl-head silhouette in dusk ink against the
+ *                      v2 horizon-gradient sky, eyes as two solid amber
+ *                      discs (the glow of an owl watching at dusk).
  *
  * Colors are the V1 Dusk tokens from src/app/globals.css, converted
  * OKLCH → sRGB hex here (standard Ottosson OKLab matrices — the same math
@@ -121,6 +135,28 @@ const MARK_CY = 16.2;
 const markTransform = (scale) =>
   `translate(${256 - MARK_CX * scale} ${256 - MARK_CY * scale}) scale(${scale})`;
 
+/** transform scaling 512-space art about the canvas centre (round-2 variants
+ * author geometry directly in the 512 box; markScale 1 = as drawn). */
+const artTransform = (scale) =>
+  `translate(${256 * (1 - scale)} ${256 * (1 - scale)}) scale(${scale})`;
+
+// V1 horizon recipe (DESIGN.md §2): vertical sky gradient + sun-glow radial
+// at ~78%w / 88%h. Shared by v2 and v6; gradient lives in the SKY only (§4
+// fill discipline — marks stay flat).
+const HORIZON_DEFS =
+  `<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">` +
+  `<stop offset="0" stop-color="${DUSK.skyTop}"/>` +
+  `<stop offset="0.48" stop-color="${DUSK.skyMid}"/>` +
+  `<stop offset="1" stop-color="${DUSK.skyBottom}"/>` +
+  `</linearGradient>` +
+  `<radialGradient id="glow" cx="0.78" cy="0.88" r="0.5">` +
+  `<stop offset="0" stop-color="${DUSK.sun}" stop-opacity="0.5"/>` +
+  `<stop offset="1" stop-color="${DUSK.sun}" stop-opacity="0"/>` +
+  `</radialGradient>`;
+const HORIZON_BG =
+  `<rect width="${SIZE}" height="${SIZE}" fill="url(#sky)"/>` +
+  `<rect width="${SIZE}" height="${SIZE}" fill="url(#glow)"/>`;
+
 /**
  * Per-variant art. `mark(scale)` returns the inner SVG; `markScale` /
  * `maskScale` size the mark for standard vs maskable exports. Maskable safe
@@ -145,22 +181,8 @@ const VARIANTS = {
     label: "First Light",
     markScale: 12.8,
     maskScale: 12,
-    // V1 horizon recipe (DESIGN.md §2): vertical sky gradient + sun-glow
-    // radial at ~78%w / 88%h @18% alpha. Gradient lives in the SKY; the owl
-    // stays a flat silhouette (§4 fill discipline).
-    defs:
-      `<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">` +
-      `<stop offset="0" stop-color="${DUSK.skyTop}"/>` +
-      `<stop offset="0.48" stop-color="${DUSK.skyMid}"/>` +
-      `<stop offset="1" stop-color="${DUSK.skyBottom}"/>` +
-      `</linearGradient>` +
-      `<radialGradient id="glow" cx="0.78" cy="0.88" r="0.5">` +
-      `<stop offset="0" stop-color="${DUSK.sun}" stop-opacity="0.5"/>` +
-      `<stop offset="1" stop-color="${DUSK.sun}" stop-opacity="0"/>` +
-      `</radialGradient>`,
-    background:
-      `<rect width="${SIZE}" height="${SIZE}" fill="url(#sky)"/>` +
-      `<rect width="${SIZE}" height="${SIZE}" fill="url(#glow)"/>`,
+    defs: HORIZON_DEFS,
+    background: HORIZON_BG,
     mark: (s) =>
       `<g transform="${markTransform(s)}">` +
       `<path d="${BODY_D}" fill="${DUSK.sceneNear}"/>` +
@@ -179,6 +201,68 @@ const VARIANTS = {
       `<circle cx="256" cy="256" r="${Math.round(13.3 * s * 1.16)}" fill="${DUSK.primary}"/>` +
       `<g transform="${markTransform(s)}">` +
       `<path d="${BODY_D}" fill="${DUSK.background}"/>` +
+      `</g>`,
+  },
+  // -- Round 2 (owl-forward; 512-space geometry, artTransform scaling) ------
+  v4: {
+    label: "Watcher",
+    // Max radial extent from canvas centre: eyes' outer edge dx = 192
+    // (cx 360 + r 88 − 256). maskScale 0.84 → 161 ≤ 204.8 safe radius.
+    markScale: 1,
+    maskScale: 0.84,
+    defs: "",
+    background: `<rect width="${SIZE}" height="${SIZE}" fill="${DUSK.background}"/>`,
+    mark: (s) =>
+      `<g transform="${artTransform(s)}">` +
+      // Ear tufts — short triangles rooted on the eye-top arcs, apexes
+      // angled up-OUTWARD (owl tufts splay; cat ears point straight up).
+      `<polygon points="82,246 162,213 96,150" fill="${DUSK.foreground}"/>` +
+      `<polygon points="430,246 350,213 416,150" fill="${DUSK.foreground}"/>` +
+      // Eyes — the load-bearing signifier: two large pale discs, dusk pupils.
+      `<circle cx="152" cy="300" r="88" fill="${DUSK.foreground}"/>` +
+      `<circle cx="360" cy="300" r="88" fill="${DUSK.foreground}"/>` +
+      `<circle cx="152" cy="300" r="42" fill="${DUSK.background}"/>` +
+      `<circle cx="360" cy="300" r="42" fill="${DUSK.background}"/>` +
+      // Beak — amber kite between the eyes; the single point of heat.
+      `<polygon points="256,308 284,352 256,408 228,352" fill="${DUSK.primary}"/>` +
+      `</g>`,
+  },
+  v5: {
+    label: "Disc",
+    // Extent: chin point dy = 160 (y 416 − 256); ×1.1 → 176 standard,
+    // ×0.95 → 152 maskable ≤ 204.8.
+    markScale: 1.1,
+    maskScale: 0.95,
+    defs: "",
+    background: `<rect width="${SIZE}" height="${SIZE}" fill="${DUSK.background}"/>`,
+    mark: (s) =>
+      `<g transform="${artTransform(s)}">` +
+      // Facial disc — barn-owl heart: notched brow, lobed sides, pointed chin.
+      `<path d="M 256 168 C 220 120 150 130 130 200 C 112 268 140 350 256 416 C 372 350 400 268 382 200 C 362 130 292 120 256 168 Z" fill="${DUSK.foreground}"/>` +
+      // Eyes — dusk discs set wide in the pale disc.
+      `<circle cx="196" cy="248" r="32" fill="${DUSK.background}"/>` +
+      `<circle cx="316" cy="248" r="32" fill="${DUSK.background}"/>` +
+      // Beak — narrow amber kite on the disc's centre line.
+      `<polygon points="256,262 274,304 256,348 238,304" fill="${DUSK.primary}"/>` +
+      `</g>`,
+  },
+  v6: {
+    label: "Night Watch",
+    // Extent: head's widest point dx = 188 (Bézier x 444 − 256).
+    // maskScale 0.85 → 160 ≤ 204.8.
+    markScale: 1,
+    maskScale: 0.85,
+    defs: HORIZON_DEFS,
+    background: HORIZON_BG,
+    mark: (s) =>
+      `<g transform="${artTransform(s)}">` +
+      // Tufted head silhouette — sharp ear-tuft peaks, brow dip between.
+      `<path d="M 132 128 Q 256 250 380 128 C 428 182 444 262 408 330 C 372 402 312 430 256 430 C 200 430 140 402 104 330 C 68 262 84 182 132 128 Z" fill="${DUSK.sceneNear}"/>` +
+      // Eyes — solid amber discs: the glow that says owl-at-dusk.
+      `<circle cx="188" cy="268" r="46" fill="${DUSK.primary}"/>` +
+      `<circle cx="324" cy="268" r="46" fill="${DUSK.primary}"/>` +
+      // Beak — amber kite under the eyes; breaks any cat-head misread.
+      `<polygon points="256,288 278,330 256,376 234,330" fill="${DUSK.primary}"/>` +
       `</g>`,
   },
 };
