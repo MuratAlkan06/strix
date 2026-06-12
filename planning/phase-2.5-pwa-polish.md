@@ -21,14 +21,14 @@
 
 ### Service worker
 
-- Use Workbox via `@serwist/next` (or `next-pwa` if simpler) — pick whichever is currently best-supported with Next.js 15 App Router at build time.
+- Use Workbox via `@serwist/next` (or `next-pwa` if simpler) — pick whichever is currently best-supported with Next.js 15 App Router at build time. (Chosen: `@serwist/next` in **configurator mode** — the repo is Next 16, which builds with Turbopack, and the classic webpack-plugin mode does not support Turbopack. `serwist build serwist.config.mjs` compiles `src/app/sw.ts` → `public/sw.js` after `next build`; registration via `<SerwistProvider>` in the root layout.)
 - Strategy:
   - **App shell** (JS/CSS chunks, fonts): `CacheFirst`.
-  - **Dashboard route HTML**: `StaleWhileRevalidate` so the user sees yesterday's dashboard instantly offline, then fresh data lands when online.
+  - **Dashboard route HTML**: `StaleWhileRevalidate` so the user sees yesterday's dashboard instantly offline, then fresh data lands when online. (Implemented for the route HTML AND its RSC payloads — same pathname — in the named `strix-dashboard-<build>` cache.)
   - **API routes**: `NetworkOnly`. No offline mutations in MVP — show a clear "offline" state on the check-off action; queue is v2 territory.
   - **AI endpoints**: `NetworkOnly` and excluded from any cache. AI responses must never be replayed.
-- Versioning: cache name includes a build hash so old caches are evicted on deploy.
-- **Cached dashboard JSON carve-out**: "last-loaded JSON for today's tasks" (offline shell below) is authenticated user data, so it cannot ride the `NetworkOnly` API rule — name its storage mechanism explicitly (a dedicated SW data cache via `cache.put`, or IndexedDB) so the purge below can target it. Do not let it land in localStorage implicitly.
+- Versioning: cache name includes a build hash so old caches are evicted on deploy. (Implemented: `strix-shell-<BUILD_ID>` / `strix-dashboard-<BUILD_ID>` from `.next/BUILD_ID`; an activate-time hook in `sw.ts` deletes `strix-*` caches from other builds.)
+- **Cached dashboard JSON carve-out**: "last-loaded JSON for today's tasks" (offline shell below) is authenticated user data, so it cannot ride the `NetworkOnly` API rule — name its storage mechanism explicitly (a dedicated SW data cache via `cache.put`, or IndexedDB) so the purge below can target it. Do not let it land in localStorage implicitly. (Satisfied by the `strix-dashboard-<build>` cache above: the server-rendered HTML/RSC payloads ARE the last-loaded dashboard data — no separate JSON/IndexedDB store exists; the purge enumerates `caches.keys()` and hits it by name.)
 - **Session-end purge (shared-device safety)**: on sign-out — and on session expiry / remote revocation when detected — clear **all SW caches and the client-side dashboard data store** before the redirect completes (`await caches.keys() → caches.delete(...)`; a navigation mid-purge can cut it short). The next user on a shared device must not see the previous user's dashboard offline. Account deletion (Phase 4) routes through this same purge. Full-clear also evicts the user-agnostic app shell — accepted for MVP (one static re-download) over per-user cache partitioning.
 
 ### iOS standalone polish
@@ -104,5 +104,5 @@ Pick the one that's currently maintained against Next.js 15 App Router. As of ea
 Automated:
 
 - Build emits a valid manifest (validated against the W3C manifest spec).
-- Service worker registers cleanly in dev and prod builds.
+- Service worker registers cleanly in dev and prod builds. (Dev: `pnpm dev` one-shot-builds the worker before `next dev`, registration stays enabled — no dev-disable. Prod: pinned by e2e/service-worker.spec.ts against the verify:ui prod server.)
 - Playwright headless run of the dashboard offline (mocked offline) renders the shell without errors.

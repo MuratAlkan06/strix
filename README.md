@@ -211,7 +211,8 @@ src/
 │   ├── (settings)/settings/page.tsx # placeholder shell
 │   ├── globals.css                  # goal-color palette CSS vars + shadcn tokens
 │   ├── page.tsx                     # public landing; redirects signed-in → /dashboard
-│   └── layout.tsx                   # ClerkProvider
+│   ├── sw.ts                        # service-worker entry — `serwist build` → public/sw.js
+│   └── layout.tsx                   # ClerkProvider + SerwistProvider (sw.js registration)
 ├── components/
 │   ├── ui/                          # shadcn/ui (button, card, dialog, … sonner)
 │   ├── scene.tsx                    # the one DAWN illustration primitive (tiles are data)
@@ -253,6 +254,8 @@ src/
 │   ├── goal-scene.ts                # activity_type → Scene variant (completion moment)
 │   ├── goal-seeds.ts                # empty-state tiles + the {climb,…} seed whitelist
 │   ├── limits.ts                    # free-tier usage caps (SPEC §10)
+│   ├── sw/runtime-caching.ts        # SW caching rules — versioned strix-* caches;
+│   │                                #   /api/ai/* pinned never-cached
 │   └── utils.ts                     # shadcn cn() helper
 └── proxy.ts                         # clerkMiddleware + public-route whitelist
                                      # (Next 16 renamed middleware.ts → proxy.ts)
