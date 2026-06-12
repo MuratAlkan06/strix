@@ -25,6 +25,7 @@ import {
   buildAccomplishedCards,
   buildDashboardModel,
   dashboardDateLabel,
+  dayUnit,
   goalHref,
   greetingForHour,
   shouldShowCheckInPrompt,
@@ -398,6 +399,27 @@ describe("deep links + display helpers", () => {
     expect(greetingForHour(13, "Murat")).toBe("Good afternoon, Murat.");
     expect(greetingForHour(22)).toBe("Good evening.");
     expect(greetingForHour(3, "  ")).toBe("Good evening.");
+  });
+
+  it("greetingForHour bucket boundaries: [5,12) morning, [12,18) afternoon, else evening", () => {
+    // Evening→morning edge at 5.
+    expect(greetingForHour(4)).toBe("Good evening.");
+    expect(greetingForHour(5)).toBe("Good morning.");
+    // Morning→afternoon edge at 12.
+    expect(greetingForHour(11)).toBe("Good morning.");
+    expect(greetingForHour(12)).toBe("Good afternoon.");
+    // Afternoon→evening edge at 18.
+    expect(greetingForHour(17)).toBe("Good afternoon.");
+    expect(greetingForHour(18)).toBe("Good evening.");
+    // Day extremes wrap into evening.
+    expect(greetingForHour(0)).toBe("Good evening.");
+    expect(greetingForHour(23)).toBe("Good evening.");
+  });
+
+  it("dayUnit pluralizes the countdown label at the 0/1/2 boundary", () => {
+    expect(dayUnit(0)).toBe("days");
+    expect(dayUnit(1)).toBe("day");
+    expect(dayUnit(2)).toBe("days");
   });
 });
 

@@ -35,7 +35,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Pencil, X } from "lucide-react";
+import { Check, CircleAlert, Pencil, X } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -356,11 +356,18 @@ function ReviewSurface({
         </DiffSection>
       ))}
 
-      {/* Calm, constant error line — announced politely. */}
+      {/* Calm, constant error line — announced politely. §8: warning is
+          amber (icon-paired, the dashboard overdue-note treatment), never
+          red — and never body-copy gray, so a failure registers as one. */}
       <p aria-live="polite" role="status" className="sr-only">
         {error ?? ""}
       </p>
-      {error && <p className="text-sm text-muted-foreground">{error}</p>}
+      {error && (
+        <p className="inline-flex items-center gap-1.5 text-sm text-primary">
+          <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
+          {error}
+        </p>
+      )}
 
       {applied ? (
         <section
@@ -568,6 +575,7 @@ function ChangeCard({
         <div className="flex flex-wrap items-center gap-2">
           <DecisionToggle
             pressed={state.decision === "accept"}
+            tone="accept"
             label={`Accept: ${row.title}`}
             onClick={onAccept}
           >
@@ -588,6 +596,7 @@ function ChangeCard({
           )}
           <DecisionToggle
             pressed={state.decision === "reject"}
+            tone="reject"
             label={`Reject: ${row.title}`}
             onClick={onReject}
           >
@@ -602,11 +611,16 @@ function ChangeCard({
 
 function DecisionToggle({
   pressed,
+  tone,
   label,
   onClick,
   children,
 }: {
   pressed: boolean;
+  /** Selected treatment: accept = amber (the affirming tone); reject = muted
+   *  (the diff's removal gray) — so the two decided states never share the
+   *  same amber ring and read decisively at a glance. */
+  tone: "accept" | "reject";
   label: string;
   onClick: () => void;
   children: React.ReactNode;
@@ -619,9 +633,11 @@ function DecisionToggle({
       onClick={onClick}
       className={cn(
         "inline-flex h-11 min-h-11 scroll-mb-24 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-        pressed
-          ? "border-ring bg-accent/40 text-foreground"
-          : "border-border text-foreground hover:bg-accent/20",
+        !pressed && "border-border text-foreground hover:bg-accent/20",
+        pressed &&
+          (tone === "accept"
+            ? "border-ring bg-accent/40 text-foreground"
+            : "border-muted-foreground/60 bg-muted/60 text-foreground"),
       )}
     >
       {children}
@@ -934,8 +950,12 @@ function GenerateSurface({
       <p aria-live="polite" role="status" className="sr-only">
         {generating ? "Generating the proposal." : (error ?? "")}
       </p>
+      {/* §8: amber icon-paired warning, never red — distinct from body copy. */}
       {error && (
-        <p className="mt-3 text-sm text-muted-foreground">{error}</p>
+        <p className="mt-3 inline-flex items-center gap-1.5 text-sm text-primary">
+          <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
+          {error}
+        </p>
       )}
 
       {canGenerate && (
