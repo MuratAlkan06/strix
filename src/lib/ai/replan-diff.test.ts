@@ -7,11 +7,20 @@
  *   - a fully populated valid diff parses;
  *   - malformed AI output is REJECTED before persisting: wrong cadence enum,
  *     a missing add/modify/remove array, non-positive durations, weekday out
- *     of the 0–6 convention.
+ *     of the 0–6 convention;
+ *   - the hand-written structured-outputs face (REPLAN_JSON_SCHEMA) stays in
+ *     step with the zod face: same sections, add fields all required,
+ *     modify.changes fields optional-by-omission, additionalProperties: false
+ *     on every object node.
  */
 import { describe, expect, it } from "vitest";
 
-import { EMPTY_REPLAN_DIFF, ReplanDiffSchema } from "./replan-diff";
+import {
+  EMPTY_REPLAN_DIFF,
+  REPLAN_JSON_SCHEMA,
+  ReplanDiffSchema,
+  replanOutputFormat,
+} from "./replan-diff";
 
 /** A populated, valid diff exercising every section and branch. */
 function validDiff() {
@@ -119,5 +128,71 @@ describe("ReplanDiffSchema — rejects malformed AI output", () => {
     const diff = validDiff();
     diff.recurring_tasks.modify[0]!.changes.weekday = 7;
     expect(ReplanDiffSchema.safeParse(diff).success).toBe(false);
+  });
+});
+
+describe("REPLAN_JSON_SCHEMA — the structured-outputs face stays in step with zod", () => {
+  it("mirrors the zod sections and the add/modify/remove triads", () => {
+    expect(REPLAN_JSON_SCHEMA.required).toEqual([
+      "recurring_tasks",
+      "milestones",
+      "equipment",
+    ]);
+    for (const section of ["recurring_tasks", "milestones", "equipment"] as const) {
+      const node = REPLAN_JSON_SCHEMA.properties[section];
+      expect(node.required).toEqual(["add", "modify", "remove"]);
+    }
+  });
+
+  it("requires every add field but leaves all modify.changes fields optional", () => {
+    const sections = REPLAN_JSON_SCHEMA.properties;
+    expect(sections.recurring_tasks.properties.add.items.required).toEqual([
+      "title",
+      "cadence",
+      "weekday",
+      "estimated_duration_min",
+    ]);
+    expect(sections.milestones.properties.add.items.required).toEqual([
+      "title",
+      "target_date",
+      "position",
+    ]);
+    expect(sections.equipment.properties.add.items.required).toEqual([
+      "title",
+      "cost_usd",
+      "milestone_id",
+      "standalone_deadline",
+    ]);
+    // changes objects: no `required` array — the model emits only what changes
+    // (optional-by-omission; the zod gate accepts any subset).
+    for (const section of ["recurring_tasks", "milestones", "equipment"] as const) {
+      const changes =
+        sections[section].properties.modify.items.properties.changes;
+      expect("required" in changes).toBe(false);
+      expect(changes.additionalProperties).toBe(false);
+    }
+  });
+
+  it("pins additionalProperties: false on every object node (grammar strictness)", () => {
+    const stack: unknown[] = [REPLAN_JSON_SCHEMA];
+    let objects = 0;
+    while (stack.length > 0) {
+      const node = stack.pop();
+      if (typeof node !== "object" || node === null) continue;
+      const rec = node as Record<string, unknown>;
+      if (rec.type === "object") {
+        objects += 1;
+        expect(rec.additionalProperties).toBe(false);
+      }
+      for (const value of Object.values(rec)) stack.push(value);
+    }
+    expect(objects).toBeGreaterThan(10); // the walk really visited the tree
+  });
+
+  it("replanOutputFormat parses raw JSON and carries the schema", () => {
+    const format = replanOutputFormat();
+    expect(format.type).toBe("json_schema");
+    expect(format.schema).toBe(REPLAN_JSON_SCHEMA);
+    expect(format.parse!('{"a":1}')).toEqual({ a: 1 });
   });
 });

@@ -139,6 +139,7 @@ src/
 │   ├── api/
 │   │   ├── ai/intake/route.ts       # POST: streaming (SSE) goal-intake endpoint
 │   │   ├── ai/plan/route.ts         # POST: one-shot plan generation (non-streaming)
+│   │   ├── ai/replan/route.ts       # POST: fill-vs-create replan proposal generation
 │   │   ├── inngest/route.ts         # serve({ signingKey })
 │   │   ├── me/goals/route.ts        # authed scopedDb round trip (Phase 1 seed)
 │   │   └── webhooks/clerk/
@@ -224,7 +225,8 @@ src/
 │   ├── ai/                          # Anthropic chokepoint (ADR-0001): client, models,
 │   │                                #   intake, plan, prompts, schemas, canonicalize,
 │   │                                #   session, transcript, safety-flags, today, log,
-│   │                                #   replan-diff (the Zod-typed proposal diff)
+│   │                                #   replan-diff (the Zod-typed proposal diff),
+│   │                                #   replan, adherence
 │   ├── analytics/{server,client}.ts # PostHog wrappers
 │   ├── inngest/
 │   │   ├── client.ts                # Inngest client
