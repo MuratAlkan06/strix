@@ -120,6 +120,9 @@ local macOS) so cross-OS font antialiasing never causes false diffs; after an
 intentional visual change, refresh both — your platform with `pnpm verify:ui:update`,
 and the Linux baseline in the matching Playwright Docker image (see DESIGN.md §11).
 
+**Transient live-env failures:** capture the complete failing output *before*
+any debugging or rerun — protocol in [docs/TESTING.md](docs/TESTING.md).
+
 ## Session handoff (context-packager habit)
 
 Building work across multiple sessions in the same phase loses context unless you actively preserve it. The convention: **at the end of a building session, invoke `/context-packager`** to write a handoff packet into the project's memory directory. The next session loads MEMORY.md automatically; the packet's pointer lives there.
