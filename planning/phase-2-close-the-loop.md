@@ -186,7 +186,7 @@ End-to-end:
 2. Select "too hard" + add a note ("can't fit the long run on Saturdays"). Select 1 goal to replan. Submit.
 3. Replan endpoint runs Sonnet 4.6 → diff renders in the UI. Verify the diff shape parses cleanly against `ReplanDiffSchema` and the intensity comparison ran (log shows which value won — goal-level vs intake-confirmed vs user-level).
 4. Accept some changes, reject one. Save. Verify `replan_proposals.status='partially_accepted'`, live tables reflect accepted changes only.
-5. In goal detail, with the replan flag enabled, shift the target date 30 days later. Banner appears: "Want me to update the rest of your plan?" → click → replan diff UI opens with `trigger='structural_edit'`.
+5. In goal detail, with the replan flag enabled, shift the target date 30 days later. ("Shift the target date" here means a milestone target date — there is no goal-level date editor in Phase 1/2; a future goal-level date editor would need to extend GoalDetailEdit and add a `structuralEditFor` payload.) Banner appears: "Want me to update the rest of your plan?" → click → replan diff UI opens with `trigger='structural_edit'`.
 6. Mark a goal complete → celebration shown, `status='completed'`, `auto_archive_at` is 7 days from now, `archive_reason='user_action'`.
 7. Run the Inngest auto-archive function manually with `now=auto_archive_at+1s` → goal flips to `archived`. Idempotent: re-running does nothing.
 8. Accomplished section appears on dashboard with the completed goal.

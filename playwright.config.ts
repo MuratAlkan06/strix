@@ -68,7 +68,13 @@ export default defineConfig({
     // runs `pnpm build` in its own step, so here we only start the prod server.
     command: process.env.CI ? "pnpm start" : "pnpm build && pnpm start",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    // reuseExistingServer is intentionally false (not `!process.env.CI`). On CI
+    // there is never a pre-running server so the value does not matter there. Locally
+    // a stale next-server from a previous run would serve the OLD build's JS and CSS
+    // while the screenshot harness tests the NEW build, producing false-positive pixel
+    // diffs or false-negative accessibility passes. Always booting a fresh server
+    // costs ~15s locally but guarantees the server and the baselines match.
+    reuseExistingServer: false,
     timeout: 180_000,
     stdout: "ignore",
     stderr: "pipe",
