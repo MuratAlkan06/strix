@@ -200,7 +200,10 @@ export function CheckInForm({ model, onSubmit, onSkip }: CheckInFormProps) {
                       // outline-none is safe only because of this visible
                       // replacement. Selection = border + fill + filled
                       // glyph, never color alone.
-                      "flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border px-2 py-3 transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
+                      // Base gap/padding sit a notch tighter than sm: so the
+                      // longest label ("About right", ~70px at 14px Hanken)
+                      // holds one line in the ~109px card at 375.
+                      "flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-1.5 py-3 transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/50 sm:gap-2 sm:px-2",
                       isSelected
                         ? "border-ring bg-accent/40"
                         : "border-border hover:bg-accent/20",

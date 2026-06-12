@@ -88,7 +88,7 @@ pnpm ci:check-unscoped
 | `pnpm test` | Vitest in watch mode |
 | `pnpm test:run` | Vitest, one-shot |
 | `pnpm db:*` | Drizzle commands (see above) |
-| `pnpm ci:check-unscoped` | Four-layer access-isolation check (unscopedDb imports, raw-client imports, scopedDb call shape — default-deny, raw driver imports) |
+| `pnpm ci:check-unscoped` | Five-layer access-isolation check (unscopedDb imports, raw-client imports, scopedDb call shape — default-deny, raw driver imports, scopedDb aliasing) |
 | `pnpm ci:check-doc-parity` | Deterministic doc↔code parity (layer-count phrase, allowlist quotes, enum lists in PLAN.md/verify-schema, README layout-tree paths). Invariants are admitted only after a real drift burned us — see the script header. |
 | `pnpm verify:phase-0` | Run the full Phase 0 verification matrix |
 | `pnpm verify:ui` | UI gate: Playwright + axe-core (WCAG 2.1 AA, zero violations) on the `/playground/*` harness states (`e2e/playground-*.spec.ts`) + screenshot baselines. Production server, reduced motion. First run on a new machine: `pnpm exec playwright install chromium`. |
@@ -119,6 +119,9 @@ comparison against committed Linux baselines). Screenshot baselines are
 local macOS) so cross-OS font antialiasing never causes false diffs; after an
 intentional visual change, refresh both — your platform with `pnpm verify:ui:update`,
 and the Linux baseline in the matching Playwright Docker image (see DESIGN.md §11).
+
+**Transient live-env failures:** capture the complete failing output *before*
+any debugging or rerun — protocol in [docs/TESTING.md](docs/TESTING.md).
 
 ## Session handoff (context-packager habit)
 
