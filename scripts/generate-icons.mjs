@@ -34,14 +34,34 @@
  *                      v2 horizon-gradient sky, eyes as two solid amber
  *                      discs (the glow of an owl watching at dusk).
  *
+ * ROUND 3 — V6 ground refinements (curation feedback: V6's owl wins but the
+ * gradient ground is in question; same head/eye/beak geometry, different
+ * grounds):
+ *   v6a "Flat"       — flat dusk ground. The v6 dusk-ink head would vanish on
+ *                      it (60px squint test: ΔL 0.02 is invisible), so the
+ *                      head re-tones to an elevated dusk. The --card token
+ *                      (L 0.225) ALSO fails the squint test against the
+ *                      L 0.18 ground — verified empirically at true 60px —
+ *                      so the head uses non-token oklch(0.26 0.04 264),
+ *                      same hue family, two steps up.
+ *   v6b "Pale"       — pale (foreground) head silhouette on flat dusk; eyes
+ *                      as dusk sockets with amber irises (solid-amber eyes
+ *                      wash out against the pale head at 60px — checked),
+ *                      amber beak.
+ *   v6c "Muted horizon" — the v6 gradient restrained: flat dusk sky over the
+ *                      top ~3/4 (raised to L 0.245 so the dusk-ink head still
+ *                      separates), the warm band compressed into the bottom
+ *                      quarter at lower chroma, sun-glow at ~half strength.
+ *                      Reads ~80% flat with a hint of horizon.
+ *
  * Colors are the V1 Dusk tokens from src/app/globals.css, converted
  * OKLCH → sRGB hex here (standard Ottosson OKLab matrices — the same math
  * browsers use to resolve oklch() into sRGB). Tokens are FROZEN; if
  * globals.css changes, re-derive here.
  *
  * Output layout (public/):
- *   icons/strix-v{1,2,3}.svg              — masters (standard mark scale)
- *   icons/strix-v{1,2,3}-maskable.svg     — maskable masters (mark shrunk to
+ *   icons/strix-{id}.svg                  — masters (standard mark scale)
+ *   icons/strix-{id}-maskable.svg         — maskable masters (mark shrunk to
  *                                           the ~80%-diameter safe circle)
  *   icons/strix-v{N}[-maskable]-{192,512}.png
  *   icons/icon-{192,512}.png              — WIRED set (canonical names; what
@@ -107,6 +127,11 @@ const DUSK = {
   skyMid: oklchToHex(0.3, 0.07, 300), // horizon gradient stop 48%
   skyBottom: oklchToHex(0.55, 0.12, 50), // horizon gradient stop 100%
   sun: oklchToHex(0.82, 0.12, 75), // sun-glow
+  // Round-3 (non-token, dusk-family) — rationale in the v6a/v6c notes above.
+  headDusk: oklchToHex(0.26, 0.04, 264), // v6a elevated head
+  flatSky: oklchToHex(0.245, 0.05, 272), // v6c flat sky band
+  duskMauve: oklchToHex(0.28, 0.055, 300), // v6c horizon transition
+  emberWarm: oklchToHex(0.44, 0.08, 50), // v6c muted warm band
 };
 
 // ---------------------------------------------------------------------------
@@ -156,6 +181,41 @@ const HORIZON_DEFS =
 const HORIZON_BG =
   `<rect width="${SIZE}" height="${SIZE}" fill="url(#sky)"/>` +
   `<rect width="${SIZE}" height="${SIZE}" fill="url(#glow)"/>`;
+
+// Round-3 restrained horizon (v6c): flat dusk holds to 74%, the warm band
+// lives in the bottom quarter at lower chroma, glow at ~half the v2 strength
+// and pinned near the bottom edge.
+const MUTED_HORIZON_DEFS =
+  `<linearGradient id="mutedSky" x1="0" y1="0" x2="0" y2="1">` +
+  `<stop offset="0" stop-color="${DUSK.flatSky}"/>` +
+  `<stop offset="0.74" stop-color="${DUSK.flatSky}"/>` +
+  `<stop offset="0.88" stop-color="${DUSK.duskMauve}"/>` +
+  `<stop offset="1" stop-color="${DUSK.emberWarm}"/>` +
+  `</linearGradient>` +
+  `<radialGradient id="mutedGlow" cx="0.78" cy="0.97" r="0.38">` +
+  `<stop offset="0" stop-color="${DUSK.sun}" stop-opacity="0.28"/>` +
+  `<stop offset="1" stop-color="${DUSK.sun}" stop-opacity="0"/>` +
+  `</radialGradient>`;
+const MUTED_HORIZON_BG =
+  `<rect width="${SIZE}" height="${SIZE}" fill="url(#mutedSky)"/>` +
+  `<rect width="${SIZE}" height="${SIZE}" fill="url(#mutedGlow)"/>`;
+
+// ---------------------------------------------------------------------------
+// V6 head geometry — shared by v6 and its round-3 ground refinements
+// (v6a/v6b/v6c). Tufted head silhouette, eye discs at r 46, beak kite.
+// Widest extent from canvas centre: dx = 188 (Bézier x 444 − 256), so
+// maskScale 0.85 → 160 ≤ 204.8 safe radius for every member of the family.
+// ---------------------------------------------------------------------------
+const V6_HEAD_D =
+  "M 132 128 Q 256 250 380 128 C 428 182 444 262 408 330 C 372 402 312 430 256 430 C 200 430 140 402 104 330 C 68 262 84 182 132 128 Z";
+const V6_EYES = [
+  { cx: 188, cy: 268 },
+  { cx: 324, cy: 268 },
+];
+const v6Head = (fill) => `<path d="${V6_HEAD_D}" fill="${fill}"/>`;
+const v6Eyes = (r, fill) =>
+  V6_EYES.map((e) => `<circle cx="${e.cx}" cy="${e.cy}" r="${r}" fill="${fill}"/>`).join("");
+const V6_BEAK = `<polygon points="256,288 278,330 256,376 234,330" fill="${DUSK.primary}"/>`;
 
 /**
  * Per-variant art. `mark(scale)` returns the inner SVG; `markScale` /
@@ -248,21 +308,63 @@ const VARIANTS = {
   },
   v6: {
     label: "Night Watch",
-    // Extent: head's widest point dx = 188 (Bézier x 444 − 256).
-    // maskScale 0.85 → 160 ≤ 204.8.
     markScale: 1,
     maskScale: 0.85,
     defs: HORIZON_DEFS,
     background: HORIZON_BG,
     mark: (s) =>
       `<g transform="${artTransform(s)}">` +
-      // Tufted head silhouette — sharp ear-tuft peaks, brow dip between.
-      `<path d="M 132 128 Q 256 250 380 128 C 428 182 444 262 408 330 C 372 402 312 430 256 430 C 200 430 140 402 104 330 C 68 262 84 182 132 128 Z" fill="${DUSK.sceneNear}"/>` +
-      // Eyes — solid amber discs: the glow that says owl-at-dusk.
-      `<circle cx="188" cy="268" r="46" fill="${DUSK.primary}"/>` +
-      `<circle cx="324" cy="268" r="46" fill="${DUSK.primary}"/>` +
-      // Beak — amber kite under the eyes; breaks any cat-head misread.
-      `<polygon points="256,288 278,330 256,376 234,330" fill="${DUSK.primary}"/>` +
+      // Tufted head silhouette in dusk ink; amber eye-glow; beak breaks any
+      // cat-head misread.
+      v6Head(DUSK.sceneNear) +
+      v6Eyes(46, DUSK.primary) +
+      V6_BEAK +
+      `</g>`,
+  },
+  // -- Round 3 (V6 ground refinements; identical head geometry) -------------
+  v6a: {
+    label: "Flat",
+    markScale: 1,
+    maskScale: 0.85,
+    defs: "",
+    background: `<rect width="${SIZE}" height="${SIZE}" fill="${DUSK.background}"/>`,
+    mark: (s) =>
+      `<g transform="${artTransform(s)}">` +
+      // Head re-toned to elevated dusk so it separates from the flat ground
+      // (header notes: --card fails the 60px squint test; this tone passes).
+      v6Head(DUSK.headDusk) +
+      v6Eyes(46, DUSK.primary) +
+      V6_BEAK +
+      `</g>`,
+  },
+  v6b: {
+    label: "Pale",
+    markScale: 1,
+    maskScale: 0.85,
+    defs: "",
+    background: `<rect width="${SIZE}" height="${SIZE}" fill="${DUSK.background}"/>`,
+    mark: (s) =>
+      `<g transform="${artTransform(s)}">` +
+      // Pale head; eyes punch through to the dusk ground as sockets, amber
+      // irises keep the glow signature (solid amber washes out on pale).
+      v6Head(DUSK.foreground) +
+      v6Eyes(46, DUSK.background) +
+      v6Eyes(24, DUSK.primary) +
+      V6_BEAK +
+      `</g>`,
+  },
+  v6c: {
+    label: "Muted horizon",
+    markScale: 1,
+    maskScale: 0.85,
+    defs: MUTED_HORIZON_DEFS,
+    background: MUTED_HORIZON_BG,
+    mark: (s) =>
+      `<g transform="${artTransform(s)}">` +
+      // Original dusk-ink owl; the restraint lives in the ground.
+      v6Head(DUSK.sceneNear) +
+      v6Eyes(46, DUSK.primary) +
+      V6_BEAK +
       `</g>`,
   },
 };

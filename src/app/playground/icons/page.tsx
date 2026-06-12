@@ -6,12 +6,14 @@
  * 192px, and a maskable circle-crop worst-case preview, each on BOTH a dark
  * and a light ground, so the user can pick the winner from real pixels.
  *
- * ROUND 2 (v4–v6) leads: round-1 feedback was that the emblem-derived seed
- * mark doesn't read as an owl at icon size, so these concepts are built from
- * the proven owl signifiers (two large eyes, ear tufts, facial disc). Round 1
- * (v1–v3) stays below for comparison. The wired set (manifest + apple-touch
- * links) is PROVISIONALLY v1 until curation decides; swapping = change
- * WIRED_VARIANT in the script and re-run.
+ * ROUND 3 (v6a–v6c) leads: round-2 feedback picked V6's owl but questioned
+ * the gradient ground, so round 3 holds the head/eye geometry and varies the
+ * ground (flat, pale-on-flat, muted horizon). The decision-critical view is
+ * the HOME SCREEN section up top: true-size 60px candidates on a mock dark
+ * wallpaper among dummy app tiles — gradient-vs-flat judged where the icon
+ * actually lives. Rounds 2 and 1 stay below for comparison. The wired set
+ * (manifest + apple-touch links) is PROVISIONALLY v1 until curation decides;
+ * swapping = change WIRED_VARIANT in the script and re-run.
  *
  * The /playground(.*) Clerk exemption in src/proxy.ts already makes this
  * route reachable without auth.
@@ -22,6 +24,28 @@ type Variant = { id: string; label: string; sub: string };
 
 const ROUNDS: { id: string; label: string; sub: string; variants: Variant[] }[] =
   [
+    {
+      id: "round-3",
+      label: "Round 3 — V6 grounds",
+      sub: "same owl, different grounds: is it the gradient or the bird?",
+      variants: [
+        {
+          id: "v6a",
+          label: "V6a — Flat",
+          sub: "elevated-dusk head on the flat dusk ground",
+        },
+        {
+          id: "v6b",
+          label: "V6b — Pale",
+          sub: "pale head on flat dusk, dusk eye sockets with amber irises",
+        },
+        {
+          id: "v6c",
+          label: "V6c — Muted horizon",
+          sub: "~80% flat dusk, warm band held to the bottom quarter",
+        },
+      ],
+    },
     {
       id: "round-2",
       label: "Round 2 — owl-forward",
@@ -86,6 +110,97 @@ const GROUNDS = [
   },
 ] as const;
 
+// --- Home-screen context mock (round 3, decision-critical) -----------------
+// Simulates an iOS dark home screen: one wallpaper panel per candidate, the
+// candidate at TRUE size (60px, iOS 22% corner radius) labelled "Strix" among
+// neutral dummy tiles. Wallpaper, dummy fills, and white labels are inline
+// non-token values ON PURPOSE: they imitate the OS environment, not product
+// UI (same precedent as the bg-zinc-100 light ground above).
+const HOME_CANDIDATES = [
+  { id: "v6", label: "V6 — Night Watch (gradient · original)" },
+  { id: "v6a", label: "V6a — Flat" },
+  { id: "v6b", label: "V6b — Pale" },
+  { id: "v6c", label: "V6c — Muted horizon" },
+  { id: "v4", label: "V4 — Watcher (reference)" },
+];
+
+const WALLPAPER =
+  "linear-gradient(165deg, #1c2233 0%, #0c101d 55%, #131725 100%)";
+
+// 7 dummies + the candidate = 4 columns × 2 rows. Grays/dusk tones only —
+// no glyphs, so nothing competes with the candidate for attention.
+const DUMMY_APPS = [
+  { name: "Mail", tone: "#3a4152" },
+  { name: "Photos", tone: "linear-gradient(145deg, #48506b, #262b3c)" },
+  { name: "Notes", tone: "#23283a" },
+  { name: "Camera", tone: "#515868" },
+  { name: "Maps", tone: "#2d3242" },
+  { name: "Weather", tone: "linear-gradient(160deg, #39415a, #1d2230)" },
+  { name: "Files", tone: "#424a5e" },
+];
+
+function HomeScreenTile({
+  name,
+  icon,
+}: {
+  name: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="flex w-[72px] flex-col items-center gap-1.5">
+      {icon}
+      <span className="text-[11px] leading-none text-white/90">{name}</span>
+    </div>
+  );
+}
+
+function HomeScreenPanel({ id, label }: { id: string; label: string }) {
+  const tiles = DUMMY_APPS.map((d) => (
+    <HomeScreenTile
+      key={d.name}
+      name={d.name}
+      icon={
+        <div
+          className="size-[60px] rounded-[22%]"
+          style={{ background: d.tone }}
+        />
+      }
+    />
+  ));
+  // Candidate sits at row 1, column 2 — embedded among the dummies, not a
+  // showcase corner slot.
+  tiles.splice(
+    1,
+    0,
+    <HomeScreenTile
+      key="strix"
+      name="Strix"
+      icon={
+        <IconCell
+          src={`/icons/strix-${id}-192.png`}
+          size={60}
+          alt={`${label} at true size on the mock home screen`}
+        />
+      }
+    />,
+  );
+  return (
+    <figure className="flex flex-col gap-2">
+      <figcaption className="text-sm font-medium text-foreground">
+        {label}
+      </figcaption>
+      <div
+        className="w-full max-w-[375px] rounded-2xl border border-border px-4 pb-7 pt-6"
+        style={{ background: WALLPAPER }}
+      >
+        <div className="grid grid-cols-4 justify-items-center gap-y-6">
+          {tiles}
+        </div>
+      </div>
+    </figure>
+  );
+}
+
 function IconCell({
   src,
   size,
@@ -123,6 +238,23 @@ export default function PlaygroundIconsPage() {
           apply their own.
         </p>
       </div>
+
+      <section aria-label="Home screen" className="flex flex-col gap-6">
+        <div className="flex flex-col gap-0.5 border-b border-border pb-2">
+          <h2 className="font-heading text-xl font-medium tracking-tight text-foreground">
+            Home screen
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            true-size 60px candidates on a mock dark wallpaper among dummy
+            apps — judge gradient vs flat where the icon lives
+          </p>
+        </div>
+        <div className="flex flex-col gap-5">
+          {HOME_CANDIDATES.map((c) => (
+            <HomeScreenPanel key={c.id} id={c.id} label={c.label} />
+          ))}
+        </div>
+      </section>
 
       {ROUNDS.map((round) => (
         <section
