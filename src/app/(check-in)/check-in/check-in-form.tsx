@@ -27,7 +27,7 @@
  * Zero selections is a valid submit (SPEC §10: check-ins always work; the
  * cap limits replans, never the check-in).
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -41,6 +41,7 @@ import {
 import { GoalChip } from "@/components/goal-chip";
 import { UpgradeModal } from "@/components/upgrade-modal";
 import { cn } from "@/lib/utils";
+import { requestReplanGeneration } from "../replan/generate-replan-client";
 import {
   CHECK_IN_FEELINGS,
   FEELING_LABELS,
@@ -51,6 +52,7 @@ import {
   type CheckInFeeling,
   type CheckInGoalRowModel,
   type CheckInModel,
+  type CreatedReplanProposal,
   type SkipCheckInHandler,
   type SubmitCheckInHandler,
 } from "./check-in-model";
@@ -58,7 +60,14 @@ import {
 const ERR_FALLBACK = "That didn't save. Try once more.";
 
 type Pending = "submit" | "skip" | null;
-type Done = { kind: "submitted"; newCount: number } | { kind: "skipped" } | null;
+type Done =
+  | {
+      kind: "submitted";
+      newCount: number;
+      createdProposals: CreatedReplanProposal[];
+    }
+  | { kind: "skipped" }
+  | null;
 
 export interface CheckInFormProps {
   model: CheckInModel;
@@ -117,6 +126,7 @@ export function CheckInForm({ model, onSubmit, onSkip }: CheckInFormProps) {
       setDone({
         kind: "submitted",
         newCount: newlySelectedGoalIds([...selected], proposedIds).length,
+        createdProposals: result.createdProposals ?? [],
       });
     } else {
       setError(result.error);
@@ -155,7 +165,7 @@ export function CheckInForm({ model, onSubmit, onSkip }: CheckInFormProps) {
       {model.goalRows.length === 0 ? (
         <EmptyCheckIn />
       ) : done ? (
-        <Confirmation done={done} />
+        <Confirmation done={done} goalRows={model.goalRows} />
       ) : (
         <form
           className="flex flex-col gap-6 sm:gap-7"
@@ -399,8 +409,18 @@ function GoalRow({
   );
 }
 
-/** Quiet success states — the form's job is done; no confetti (DESIGN.md §4). */
-function Confirmation({ done }: { done: NonNullable<Done> }) {
+/** Quiet success states — the form's job is done; no confetti (DESIGN.md §4).
+ *  A submission that created proposals fires generation for each, all at
+ *  once, with a per-goal status line (generating → review link / calm retry). */
+function Confirmation({
+  done,
+  goalRows,
+}: {
+  done: NonNullable<Done>;
+  goalRows: CheckInGoalRowModel[];
+}) {
+  const createdProposals =
+    done.kind === "submitted" ? done.createdProposals : [];
   return (
     <section
       aria-labelledby="check-in-done-heading"
@@ -423,6 +443,12 @@ function Confirmation({ done }: { done: NonNullable<Done> }) {
               }.`
             : "No replans this time. Your plans hold steady."}
       </p>
+      {createdProposals.length > 0 && (
+        <ReplanGenerationList
+          proposals={createdProposals}
+          goalRows={goalRows}
+        />
+      )}
       <Link
         href="/dashboard"
         className={cn(
@@ -433,6 +459,113 @@ function Confirmation({ done }: { done: NonNullable<Done> }) {
         Back to the dashboard
       </Link>
     </section>
+  );
+}
+
+type GenerationState =
+  | { kind: "generating" }
+  | { kind: "ready" }
+  | { kind: "failed"; error: string };
+
+/**
+ * The per-goal generation fan-out: one POST /api/ai/replan per created
+ * proposal, fired CONCURRENTLY on mount (never sequential — N goals must
+ * not take N× a model call), each line tracking its own
+ * generating / ready (→ the diff page) / failed (calm retry) state.
+ */
+function ReplanGenerationList({
+  proposals,
+  goalRows,
+}: {
+  proposals: CreatedReplanProposal[];
+  goalRows: CheckInGoalRowModel[];
+}) {
+  const [states, setStates] = useState<Record<string, GenerationState>>(() =>
+    Object.fromEntries(
+      proposals.map((p) => [p.proposalId, { kind: "generating" as const }]),
+    ),
+  );
+  const firedRef = useRef(false);
+
+  async function fire(p: CreatedReplanProposal) {
+    setStates((prev) => ({
+      ...prev,
+      [p.proposalId]: { kind: "generating" },
+    }));
+    const result = await requestReplanGeneration({
+      goalId: p.goalId,
+      weeklyCheckInId: p.weeklyCheckInId,
+    });
+    setStates((prev) => ({
+      ...prev,
+      [p.proposalId]: result.ok
+        ? { kind: "ready" }
+        : { kind: "failed", error: result.error },
+    }));
+  }
+
+  useEffect(() => {
+    // Once per confirmation — strict-mode double-mount must not double-POST
+    // (a second POST while pending would regenerate, wasting a model call).
+    if (firedRef.current) return;
+    firedRef.current = true;
+    void Promise.allSettled(proposals.map((p) => fire(p)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const titlesById = new Map(goalRows.map((r) => [r.id, r]));
+
+  return (
+    <ul aria-live="polite" className="mt-4 flex flex-col gap-0.5">
+      {proposals.map((p) => {
+        const goal = titlesById.get(p.goalId);
+        const state = states[p.proposalId] ?? { kind: "generating" as const };
+        return (
+          <li
+            key={p.proposalId}
+            className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-2 py-1.5"
+          >
+            <GoalChip
+              colorIndex={(goal?.colorIndex ?? 0) as 0 | 1 | 2 | 3 | 4}
+              name={goal?.title ?? "Goal"}
+              className="min-w-0 text-sm text-foreground"
+            />
+            {state.kind === "generating" && (
+              <span className="text-xs text-muted-foreground">
+                Generating the proposal…
+              </span>
+            )}
+            {state.kind === "ready" && (
+              <Link
+                href={`/replan/${p.goalId}`}
+                className={cn(
+                  buttonVariants({ variant: "link" }),
+                  "h-11 min-h-11 px-0 text-sm",
+                )}
+              >
+                Review the proposal
+              </Link>
+            )}
+            {state.kind === "failed" && (
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="text-xs text-muted-foreground">
+                  {state.error}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="lg"
+                  onClick={() => void fire(p)}
+                  className="h-11 min-h-11 px-3 text-sm"
+                >
+                  Try again
+                </Button>
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

@@ -203,7 +203,15 @@ describe("submitCheckIn — guards reject with zero writes", () => {
 describe("submitCheckIn — fresh week insert", () => {
   it("locks the check-in scope, inserts the week row, fans out proposals", async () => {
     const result = await submit({ selectedGoalIds: [GOAL_A, GOAL_B] });
-    expect(result).toEqual({ ok: true });
+    // The created proposals ride back for the confirmation's generation
+    // fan-out (one POST /api/ai/replan per row).
+    expect(result).toEqual({
+      ok: true,
+      createdProposals: [
+        { proposalId: "new-row-id", goalId: GOAL_A, weeklyCheckInId: "new-row-id" },
+        { proposalId: "new-row-id", goalId: GOAL_B, weeklyCheckInId: "new-row-id" },
+      ],
+    });
     expect(lockScopes).toEqual(["weekly-check-in"]);
 
     const weekInserts = inserts.filter((i) => i.table === weekly_check_ins);
@@ -265,7 +273,7 @@ describe("submitCheckIn — fresh week insert", () => {
 
   it("zero selections is a valid check-in: row written, no proposals", async () => {
     const result = await submit({ selectedGoalIds: [] });
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, createdProposals: [] });
     expect(inserts.filter((i) => i.table === weekly_check_ins)).toHaveLength(1);
     expect(inserts.filter((i) => i.table === replan_proposals)).toHaveLength(0);
   });
@@ -301,7 +309,7 @@ describe("submitCheckIn — re-submission upserts", () => {
 
   it("updates the existing row (with updated_at), never inserts a second", async () => {
     const result = await submit({ selectedGoalIds: [], notes: "" });
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, createdProposals: [] });
     expect(inserts.filter((i) => i.table === weekly_check_ins)).toHaveLength(0);
     expect(updates).toHaveLength(1);
     expect(updates[0]!.table).toBe(weekly_check_ins);
@@ -314,13 +322,21 @@ describe("submitCheckIn — re-submission upserts", () => {
 
   it("triggers proposals ONLY for newly-selected goals", async () => {
     proposalRows = [{ goal_id: GOAL_A }];
-    await submit({ selectedGoalIds: [GOAL_A, GOAL_B] });
+    const result = await submit({ selectedGoalIds: [GOAL_A, GOAL_B] });
     const proposalInserts = inserts.filter(
       (i) => i.table === replan_proposals,
     );
     expect(proposalInserts).toHaveLength(1);
     expect(proposalInserts[0]!.values.goal_id).toBe(GOAL_B);
     expect(proposalInserts[0]!.values.weekly_check_in_id).toBe("ci-week-1");
+    // createdProposals mirrors exactly the NEW rows — already-proposed goals
+    // never re-enter the generation fan-out.
+    expect(result).toEqual({
+      ok: true,
+      createdProposals: [
+        { proposalId: "new-row-id", goalId: GOAL_B, weeklyCheckInId: "ci-week-1" },
+      ],
+    });
   });
 
   it("a real submission after a skip upserts over it and proposes for ALL selected", async () => {
@@ -354,7 +370,7 @@ describe("submitCheckIn — the Free cap re-check (SPEC §10)", () => {
 
   it("missing counters row means 0 used — up to 2 newly-selected pass", async () => {
     const result = await submit({ selectedGoalIds: [GOAL_A, GOAL_B] });
-    expect(result).toEqual({ ok: true });
+    expect(result).toMatchObject({ ok: true });
   });
 
   it("used 1 of 2: two newly-selected goals are one too many", async () => {
@@ -375,7 +391,7 @@ describe("submitCheckIn — the Free cap re-check (SPEC §10)", () => {
     proposalRows = [{ goal_id: GOAL_A }];
     // GOAL_A is already proposed → zero NEW replans → cap can't refuse.
     const result = await submit({ selectedGoalIds: [GOAL_A] });
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, createdProposals: [] });
   });
 
   it("pro is uncapped and never reads usage_counters", async () => {
@@ -384,7 +400,7 @@ describe("submitCheckIn — the Free cap re-check (SPEC §10)", () => {
     const result = await submit({
       selectedGoalIds: [GOAL_A, GOAL_B, GOAL_C],
     });
-    expect(result).toEqual({ ok: true });
+    expect(result).toMatchObject({ ok: true });
     expect(inserts.filter((i) => i.table === replan_proposals)).toHaveLength(3);
   });
 });

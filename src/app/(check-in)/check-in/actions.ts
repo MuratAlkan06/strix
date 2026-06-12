@@ -26,9 +26,11 @@
  * always work).
  *
  * PROPOSALS: one replan_proposals row per NEWLY-selected goal, status
- * 'pending', proposed_changes = EMPTY_REPLAN_DIFF — the placeholder until
- * the replan-consumer slice generates real diffs. Re-submission triggers
- * proposals only for goals not already proposed this week.
+ * 'pending', proposed_changes = EMPTY_REPLAN_DIFF — the placeholder the
+ * generation endpoint fills. Re-submission triggers proposals only for goals
+ * not already proposed this week. The created rows ride back on the ok
+ * result (createdProposals) so the confirmation can fire POST /api/ai/replan
+ * per goal and link each diff page.
  *
  * PostHog: first_weekly_check_in_completed fires on the user's first
  * NON-SKIPPED check-in — gated on the PRE-write count of non-skipped rows
@@ -62,6 +64,7 @@ import {
   remainingReplans,
   weekStartFor,
   type CheckInActionResult,
+  type CreatedReplanProposal,
   type WeeklyFeeling,
 } from "./check-in-model";
 
@@ -132,7 +135,11 @@ export async function submitCheckIn(input: {
 
   const sdb = scopedDb(userId);
   type Outcome =
-    | { kind: "ok"; fireFirstEvent: boolean }
+    | {
+        kind: "ok";
+        fireFirstEvent: boolean;
+        createdProposals: CreatedReplanProposal[];
+      }
     | { kind: "not_found" }
     | { kind: "cap"; replansUsed: number };
   let outcome: Outcome;
@@ -202,8 +209,11 @@ export async function submitCheckIn(input: {
         notes,
       );
 
+      // The created rows feed the confirmation's per-goal generation fan-out
+      // (Slice 3): each POST /api/ai/replan needs the goal + the check-in.
+      const createdProposals: CreatedReplanProposal[] = [];
       for (const goalId of newIds) {
-        await tx.insert(replan_proposals, {
+        const inserted = await tx.insert(replan_proposals, {
           goal_id: goalId,
           user_id: userId,
           trigger: "weekly_check_in",
@@ -211,11 +221,17 @@ export async function submitCheckIn(input: {
           proposed_changes: EMPTY_REPLAN_DIFF,
           status: "pending",
         });
+        createdProposals.push({
+          proposalId: inserted[0]!.id,
+          goalId,
+          weeklyCheckInId: checkInId,
+        });
       }
 
       return {
         kind: "ok",
         fireFirstEvent: isFirstCheckInEvent(preNonSkipped, feeling),
+        createdProposals,
       };
     });
   } catch {
@@ -237,7 +253,7 @@ export async function submitCheckIn(input: {
   }
 
   revalidatePath("/check-in");
-  return { ok: true };
+  return { ok: true, createdProposals: outcome.createdProposals };
 }
 
 /**
