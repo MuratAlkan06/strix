@@ -281,10 +281,12 @@ export function CompletionScene({
       />
 
       {/* 5 · "Well done." — Fraunces, 200ms fade, +60ms after the sky settles.
-            Opacity-only → still appears under reduced motion (§4.3). */}
+            Opacity-only → still appears under reduced motion (§4.3).
+            22/28px = the §3 scale's display steps (the HorizonHeader h1 rank);
+            text-2xl (24px) sat between scale steps. */}
       <div className="pointer-events-none absolute inset-0 flex items-end justify-center p-5">
         <m.p
-          className="font-heading text-2xl font-medium tracking-tight text-foreground"
+          className="font-heading text-[22px] font-medium leading-tight tracking-tight text-foreground sm:text-[28px]"
           initial={{ opacity: 0 }}
           animate={{ opacity: complete ? 1 : 0 }}
           transition={{
