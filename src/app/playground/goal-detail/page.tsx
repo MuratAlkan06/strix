@@ -19,6 +19,14 @@
  * intensity radios (plain value text), no Mark complete, no Adjust plan.
  * The status badge + quiet treatment render as on a real reload.
  *
+ * ?state=banner-visible | banner-generating | banner-error — the slice-4
+ * structural-edit replan banner postures: replanFlag "true" + a pre-landed
+ * structural session (one weekly removal + one milestone date shift), with
+ * the banner idle / mid-flight (quiet "Generating", disabled) / failed (the
+ * endpoint's constant 502 line + Try again). The harness generation stub
+ * always fails, so clicking exercises the calm retry loop deterministically;
+ * the success route is live-only.
+ *
  * /playground(.*) is Clerk-excluded (src/proxy.ts); the segment layout
  * noindexes it. Out of the README tree by design.
  */
@@ -27,6 +35,8 @@ import {
   type EquipmentRowLike,
   type GoalRowLike,
   type MilestoneRowLike,
+  type ReplanBannerState,
+  type StructuralEdit,
   type TaskRowLike,
 } from "../../(goals)/goals/[id]/detail-model";
 import { GoalDetailHarness } from "./harness";
@@ -145,6 +155,30 @@ const EQUIPMENT: EquipmentRowLike[] = [
   },
 ];
 
+// A realistic pre-landed structural session for the banner-* states: one
+// weekly removal + one milestone target-date shift (~30 days, the phase-gate
+// E2E step-5 move).
+const BANNER_EDITS: StructuralEdit[] = [
+  {
+    kind: "task_removed",
+    cadence: "weekly",
+    title: "Long hike with elevation gain",
+  },
+  {
+    kind: "target_date_shifted",
+    milestoneId: "ms-tete",
+    title: "Summit Tête Blanche as a shakedown",
+    from: "2027-05-20",
+    to: "2027-06-20",
+  },
+];
+
+const BANNER_STATES: Record<string, ReplanBannerState> = {
+  "banner-visible": { kind: "idle" },
+  "banner-generating": { kind: "generating" },
+  "banner-error": { kind: "error", error: "Replan generation failed." },
+};
+
 interface PageProps {
   searchParams: Promise<{ state?: string | string[] }>;
 }
@@ -154,6 +188,8 @@ export default async function PlaygroundGoalDetailPage({
 }: PageProps) {
   const { state } = await searchParams;
   const selected = Array.isArray(state) ? state[0] : state;
+  const bannerState =
+    selected !== undefined ? BANNER_STATES[selected] : undefined;
 
   const model = buildGoalDetailModel({
     goal: {
@@ -173,5 +209,14 @@ export default async function PlaygroundGoalDetailPage({
     equipment: EQUIPMENT,
   });
 
-  return <GoalDetailHarness model={model} />;
+  return (
+    <GoalDetailHarness
+      model={model}
+      // banner-* states: flag on + the pre-landed session; everything else
+      // keeps the flag-off Phase 1 posture (no banner anywhere).
+      replanFlag={bannerState !== undefined ? "true" : undefined}
+      initialStructuralEdits={bannerState !== undefined ? BANNER_EDITS : undefined}
+      initialReplanBannerState={bannerState}
+    />
+  );
 }
