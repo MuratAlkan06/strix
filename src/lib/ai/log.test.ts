@@ -8,10 +8,59 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { logAiError } from "./log";
+import { logAiError, logAiUsage, toUsageLog } from "./log";
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("logAiUsage / toUsageLog", () => {
+  it("emits one ai_usage JSON line whose shape includes duration_ms and stays PII-free", () => {
+    const spy = vi.spyOn(console, "info").mockImplementation(() => {});
+    logAiUsage(
+      toUsageLog(
+        "plan",
+        "claude-sonnet-4-6",
+        {
+          input_tokens: 12,
+          output_tokens: 34,
+          cache_creation_input_tokens: 5,
+          cache_read_input_tokens: 1500,
+        },
+        2317,
+      ),
+    );
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const parsed = JSON.parse(spy.mock.calls[0]?.[0] as string);
+    // Exact shape: op/model/token counts/duration only — never transcript
+    // content, user IDs, or goal text (the no-PII property).
+    expect(parsed).toEqual({
+      event: "ai_usage",
+      op: "plan",
+      model: "claude-sonnet-4-6",
+      input_tokens: 12,
+      output_tokens: 34,
+      cache_creation_input_tokens: 5,
+      cache_read_input_tokens: 1500,
+      duration_ms: 2317,
+    });
+  });
+
+  it("clamps duration_ms to a non-negative integer and zero-fills missing usage", () => {
+    expect(toUsageLog("intake", "claude-sonnet-4-6", null, 1234.6)).toEqual({
+      op: "intake",
+      model: "claude-sonnet-4-6",
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+      duration_ms: 1235,
+    });
+    expect(
+      toUsageLog("intake", "claude-sonnet-4-6", undefined, -5).duration_ms,
+    ).toBe(0);
+  });
 });
 
 describe("logAiError", () => {

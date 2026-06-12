@@ -16,17 +16,23 @@ export interface AiUsageLog {
   output_tokens: number;
   cache_creation_input_tokens: number;
   cache_read_input_tokens: number;
+  /** Wall-clock latency of the model call, integer milliseconds. */
+  duration_ms: number;
 }
 
 /**
  * Normalize a (possibly partial) Anthropic Usage into the flat numeric shape.
  * message_start carries input + cache fields; finalMessage carries the final
  * output_tokens — callers merge by passing whichever is most complete.
+ * durationMs is the caller-measured wall clock around the model call (issue
+ * #45: latency p50/p95 must be observable before scaling the check-in
+ * fan-out); it is clamped to a non-negative integer.
  */
 export function toUsageLog(
   op: string,
   model: string,
   usage: Partial<Usage> | null | undefined,
+  durationMs: number,
 ): AiUsageLog {
   return {
     op,
@@ -35,6 +41,7 @@ export function toUsageLog(
     output_tokens: usage?.output_tokens ?? 0,
     cache_creation_input_tokens: usage?.cache_creation_input_tokens ?? 0,
     cache_read_input_tokens: usage?.cache_read_input_tokens ?? 0,
+    duration_ms: Math.max(0, Math.round(durationMs)),
   };
 }
 

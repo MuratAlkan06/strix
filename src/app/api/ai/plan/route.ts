@@ -41,6 +41,14 @@ import { capture } from "@/lib/analytics/server";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Function-duration bound, seconds (issue #45). One non-streaming Sonnet call
+ * with max_tokens 4096 — a full-budget structured generation runs tens of
+ * seconds, so 90s is roughly 3x tail headroom while cutting a hung provider
+ * call off long before the 300s platform default.
+ */
+export const maxDuration = 90;
+
 /** Best-effort double-charge guard: draft ids with a generation in flight on
  *  THIS instance. Serverless siblings each keep their own set — acceptable;
  *  the client auto-kicks once and the worst case is one redundant call. */
