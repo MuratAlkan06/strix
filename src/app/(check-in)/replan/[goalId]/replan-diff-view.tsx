@@ -506,8 +506,10 @@ function ChangeCard({
 }) {
   const editable = row.kind === "remove" ? [] : row.editable;
   return (
+    // scroll-mb keeps the card (and its focused controls) clear of the
+    // sticky commit bar when scrolled or tabbed into view.
     <li
-      className="flex flex-col gap-3 rounded-xl border border-border border-l-2 bg-card p-4"
+      className="flex scroll-mb-24 flex-col gap-3 rounded-xl border border-border border-l-2 bg-card p-4"
       style={{ borderLeftColor: KIND_ACCENTS[row.kind] }}
     >
       <KindLabel kind={row.kind} />
@@ -549,7 +551,7 @@ function ChangeCard({
               type="button"
               aria-label={`Edit: ${row.title}`}
               onClick={onEditOpen}
-              className="inline-flex h-11 min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors outline-none hover:bg-accent/20 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="inline-flex h-11 min-h-11 scroll-mb-24 cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors outline-none hover:bg-accent/20 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <Pencil aria-hidden="true" className="size-4" />
               Edit
@@ -587,7 +589,7 @@ function DecisionToggle({
       aria-label={label}
       onClick={onClick}
       className={cn(
-        "inline-flex h-11 min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+        "inline-flex h-11 min-h-11 scroll-mb-24 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         pressed
           ? "border-ring bg-accent/40 text-foreground"
           : "border-border text-foreground hover:bg-accent/20",
@@ -1019,7 +1021,7 @@ function DecidedSummary({
       </section>
 
       {model.sections.length > 0 && (
-        <div className="flex flex-col gap-6" aria-label="The proposal, as reviewed">
+        <div className="flex flex-col gap-6">
           {model.sections.map((section) => (
             <DiffSection key={section.section} section={section}>
               {section.rows.map((row) => (
