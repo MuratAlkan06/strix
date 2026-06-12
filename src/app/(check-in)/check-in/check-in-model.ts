@@ -267,7 +267,20 @@ export function buildCheckInModel(input: {
 // in the playground harness — the dashboard-model posture).
 // ---------------------------------------------------------------------------
 
-export type CheckInActionResult = { ok: true } | { ok: false; error: string };
+/** One replan_proposals row a submission just created — what the
+ *  confirmation needs to fire POST /api/ai/replan per goal and link each
+ *  diff page (/replan/<goalId>). */
+export interface CreatedReplanProposal {
+  proposalId: string;
+  goalId: string;
+  weeklyCheckInId: string;
+}
+
+/** `createdProposals` rides only on submitCheckIn (skip never creates any);
+ *  absent means none were created this submission. */
+export type CheckInActionResult =
+  | { ok: true; createdProposals?: CreatedReplanProposal[] }
+  | { ok: false; error: string };
 
 export type SubmitCheckInHandler = (input: {
   feeling: CheckInFeeling;
