@@ -19,6 +19,11 @@
  *      stays green before its Linux baselines are committed (the PR #26
  *      bootstrap). Generate with `pnpm verify:ui:update` (Linux: the
  *      matching Playwright Docker image — see DESIGN.md §11).
+ *
+ *   3. INLINE EDITOR INTERACTION — Escape cancels exactly like the Cancel
+ *      button, and a failed save marks each invalid field (aria-invalid +
+ *      aria-describedby → a message naming the rule); the failed-save state
+ *      is axe-rescanned. Runs on every platform.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -116,5 +121,54 @@ test.describe("/playground/replan-diff — replan diff UI", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${ROUTE}?state=decided`, { waitUntil: "networkidle" });
     await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
+  });
+
+  test("Escape inside the inline editor cancels it and discards the draft", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    await page
+      .getByRole("button", { name: "Edit: Long endurance hike" })
+      .click();
+    const duration = page.getByLabel("Duration (minutes)");
+    await duration.fill("999");
+    await duration.press("Escape");
+    // The editor is gone — exactly the Cancel button's behavior…
+    await expect(duration).toBeHidden();
+    await expect(page.getByText("Your version")).toHaveCount(0);
+    // …and the draft was discarded: reopening shows the proposal's value.
+    await page
+      .getByRole("button", { name: "Edit: Long endurance hike" })
+      .click();
+    await expect(page.getByLabel("Duration (minutes)")).toHaveValue("240");
+  });
+
+  test("a failed save marks the invalid field and names the rule (axe-clean)", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    await page
+      .getByRole("button", { name: "Edit: Long endurance hike" })
+      .click();
+    const duration = page.getByLabel("Duration (minutes)");
+    await duration.fill("0");
+    await page.getByRole("button", { name: "Save edit" }).click();
+
+    // Field-level association: aria-invalid + aria-describedby resolving to
+    // a visible message that names the violated rule.
+    await expect(duration).toHaveAttribute("aria-invalid", "true");
+    const describedBy = await duration.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    await expect(page.locator(`[id="${describedBy}"]`)).toHaveText(
+      "Duration must be at least 1 minute.",
+    );
+    await expectNoAxeViolations(page);
+
+    // Fixing the field retires its error, and the save goes through.
+    await duration.fill("60");
+    await expect(duration).not.toHaveAttribute("aria-invalid", "true");
+    await page.getByRole("button", { name: "Save edit" }).click();
+    await expect(duration).toBeHidden();
+    await expect(page.getByText("Your version")).toBeVisible();
   });
 });

@@ -15,7 +15,10 @@
  *   - Per-change ✓ Accept / ✎ Edit / ✕ Reject (44px targets, aria-pressed,
  *     focus-visible) plus a quiet "Accept all". Editing adjusts the proposed
  *     change's own fields and marks the change accepted — the edited value
- *     is what applies, echoed under the proposal as "Your version".
+ *     is what applies, echoed under the proposal as "Your version". Escape
+ *     anywhere inside the editor cancels it (the Cancel button's behavior);
+ *     a failed save marks each invalid field (aria-invalid + aria-describedby)
+ *     with a visible message naming the rule.
  *   - A quiet commit bar: "X accepted · Y rejected[ · Z to review]" with
  *     Apply enabled once every change is decided.
  *   - A pending proposal still holding the placeholder diff renders a
@@ -38,12 +41,17 @@ import {
   GENERATE_FALLBACK_ERROR,
 } from "../generate-replan-client";
 import {
+  ANCHOR_DATE,
+  buildEditedRecord,
+  initialEditorValues,
   weekdayName,
   type ChangeDecision,
   type ChangeRowModel,
   type DecideReplanHandler,
   type DecisionMap,
   type EditableInput,
+  type EditorFieldErrors,
+  type EditorValues,
   type GenerateReplanHandler,
   type ReplanPageModel,
   type ReplanSectionModel,
@@ -450,7 +458,9 @@ function ChangeBody({ row }: { row: ChangeRowModel }) {
           >
             <span className="text-xs text-muted-foreground">{d.label}</span>
             <span className="flex flex-wrap items-baseline gap-x-2 sm:contents">
-              <span className="text-sm text-muted-foreground line-through">
+              {/* Right-aligned toward the arrow at ≥sm so the before → after
+                  pair reads as one unit instead of leaving a dead gap. */}
+              <span className="text-sm text-muted-foreground line-through sm:text-right">
                 <span className="sr-only">was </span>
                 {d.before}
               </span>
@@ -607,97 +617,6 @@ function DecisionToggle({
 const SELECT_CLASS =
   "h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-transparent px-2.5 text-base text-foreground transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
-const ANCHOR_DATE = "__date";
-
-type EditorValues = Record<string, string>;
-
-function initialEditorValues(
-  fields: EditableInput[],
-  initial: Record<string, unknown>,
-): EditorValues {
-  const values: EditorValues = {};
-  for (const f of fields) {
-    if (f.kind === "anchor") {
-      const milestoneId =
-        "milestone_id" in initial
-          ? (initial.milestone_id as string | null)
-          : f.milestoneId;
-      const standalone =
-        "standalone_deadline" in initial
-          ? (initial.standalone_deadline as string | null)
-          : f.standaloneDeadline;
-      values["anchor-choice"] = milestoneId ?? ANCHOR_DATE;
-      values["anchor-date"] = standalone ?? "";
-      continue;
-    }
-    const raw = f.field in initial ? initial[f.field] : f.value;
-    if (f.field === "position") {
-      values[f.field] = String((raw as number) + 1);
-    } else if (f.kind === "cost") {
-      values[f.field] = raw === null ? "" : String(raw);
-    } else if (f.kind === "weekday") {
-      values[f.field] = raw === null ? "1" : String(raw);
-    } else {
-      values[f.field] = raw === null ? "" : String(raw);
-    }
-  }
-  return values;
-}
-
-/** values → the edited record, including ONLY fields that differ from the
- *  proposal. null = no effective edits. Throws on invalid values. */
-function buildEditedRecord(
-  fields: EditableInput[],
-  values: EditorValues,
-): Record<string, unknown> | null {
-  const edited: Record<string, unknown> = {};
-  for (const f of fields) {
-    if (f.kind === "anchor") {
-      const choice = values["anchor-choice"] ?? ANCHOR_DATE;
-      const milestoneId = choice === ANCHOR_DATE ? null : choice;
-      const standalone =
-        choice === ANCHOR_DATE ? (values["anchor-date"] ?? "").trim() : "";
-      if (choice === ANCHOR_DATE && standalone === "") {
-        throw new Error("anchor date required");
-      }
-      const standaloneValue = choice === ANCHOR_DATE ? standalone : null;
-      if (
-        milestoneId !== f.milestoneId ||
-        standaloneValue !== f.standaloneDeadline
-      ) {
-        edited.milestone_id = milestoneId;
-        edited.standalone_deadline = standaloneValue;
-      }
-      continue;
-    }
-    const raw = (values[f.field] ?? "").trim();
-    if (f.kind === "text") {
-      if (raw === "") throw new Error("title required");
-      if (raw !== f.value) edited[f.field] = raw;
-    } else if (f.kind === "weekday") {
-      const n = Number(raw);
-      if (!Number.isInteger(n) || n < 0 || n > 6) throw new Error("weekday");
-      if (n !== f.value) edited[f.field] = n;
-    } else if (f.kind === "number") {
-      const n = Number(raw);
-      if (!Number.isInteger(n)) throw new Error("number");
-      const value = f.field === "position" ? n - 1 : n;
-      if (value < f.min) throw new Error("number");
-      if (value !== f.value) edited[f.field] = value;
-    } else if (f.kind === "date") {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) throw new Error("date");
-      if (raw !== f.value) edited[f.field] = raw;
-    } else if (f.kind === "cost") {
-      const value = raw === "" ? null : Number(raw);
-      if (value !== null && (!Number.isFinite(value) || value < 0)) {
-        throw new Error("cost");
-      }
-      if (value !== f.value) edited[f.field] = value;
-    }
-  }
-  return Object.keys(edited).length > 0 ? edited : null;
-}
-
 function ChangeEditor({
   row,
   fields,
@@ -716,27 +635,57 @@ function ChangeEditor({
   const [values, setValues] = useState<EditorValues>(() =>
     initialEditorValues(fields, initial),
   );
-  const [editError, setEditError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({});
+  const hasErrors = Object.keys(fieldErrors).length > 0;
   const idBase = `edit-${row.key.replace(/[^a-zA-Z0-9-]/g, "-")}`;
 
   function set(field: string, value: string) {
     setValues((prev) => ({ ...prev, [field]: value }));
+    // A field's error retires as soon as the field changes (switching the
+    // anchor away from "by a date" retires its date error too).
+    setFieldErrors((prev) => {
+      const stale =
+        field === "anchor-choice" ? [field, "anchor-date"] : [field];
+      if (!stale.some((k) => k in prev)) return prev;
+      const next = { ...prev };
+      for (const k of stale) delete next[k];
+      return next;
+    });
   }
 
   function save() {
-    try {
-      onSave(buildEditedRecord(fields, values));
-    } catch {
-      setEditError(ERR_EDIT_INVALID);
+    const result = buildEditedRecord(fields, values);
+    if (result.ok) {
+      onSave(result.edited);
+    } else {
+      setFieldErrors(result.errors);
     }
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-background/40 p-3">
+    <div
+      className="flex flex-col gap-3 rounded-lg border border-border bg-background/40 p-3"
+      onKeyDown={(e) => {
+        // Escape = the Cancel button, from anywhere inside the editor.
+        // defaultPrevented respects a native popup (an open select dropdown
+        // or date picker) consuming Escape first — don't fight the platform.
+        if (
+          e.key !== "Escape" ||
+          e.defaultPrevented ||
+          e.nativeEvent.isComposing
+        ) {
+          return;
+        }
+        e.preventDefault();
+        onCancel();
+      }}
+    >
       {fields.map((f) => {
         const inputId = `${idBase}-${f.field}`;
         if (f.kind === "anchor") {
           const choice = values["anchor-choice"] ?? ANCHOR_DATE;
+          const dateError = fieldErrors["anchor-date"];
+          const dateErrorId = `${inputId}-date-error`;
           return (
             <div key={f.field} className="flex flex-col gap-2">
               <label
@@ -768,13 +717,25 @@ function ChangeEditor({
                     type="date"
                     value={values["anchor-date"] ?? ""}
                     onChange={(e) => set("anchor-date", e.target.value)}
+                    aria-invalid={dateError ? true : undefined}
+                    aria-describedby={dateError ? dateErrorId : undefined}
                     className="h-11"
                   />
+                  {dateError && (
+                    <p
+                      id={dateErrorId}
+                      className="text-sm text-muted-foreground"
+                    >
+                      {dateError}
+                    </p>
+                  )}
                 </>
               )}
             </div>
           );
         }
+        const error = fieldErrors[f.field];
+        const errorId = `${inputId}-error`;
         return (
           <div key={f.field} className="flex flex-col gap-1.5">
             <label
@@ -811,18 +772,25 @@ function ChangeEditor({
                 step={f.kind === "cost" ? "0.01" : undefined}
                 value={values[f.field] ?? ""}
                 onChange={(e) => set(f.field, e.target.value)}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? errorId : undefined}
                 className="h-11"
               />
+            )}
+            {error && (
+              <p id={errorId} className="text-sm text-muted-foreground">
+                {error}
+              </p>
             )}
           </div>
         );
       })}
 
       <p aria-live="polite" role="status" className="sr-only">
-        {editError ?? ""}
+        {hasErrors ? ERR_EDIT_INVALID : ""}
       </p>
-      {editError && (
-        <p className="text-sm text-muted-foreground">{editError}</p>
+      {hasErrors && (
+        <p className="text-sm text-muted-foreground">{ERR_EDIT_INVALID}</p>
       )}
 
       <div className="flex items-center gap-2">

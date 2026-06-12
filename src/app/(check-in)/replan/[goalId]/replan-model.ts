@@ -868,3 +868,151 @@ export type DecideReplanHandler = (input: {
 }) => Promise<ReplanActionResult>;
 
 export type GenerateReplanHandler = () => Promise<ReplanActionResult>;
+
+// ---------------------------------------------------------------------------
+// Inline ✎ editor — draft values + per-field validation (pure)
+// ---------------------------------------------------------------------------
+
+/** The anchor select's "by a date" sentinel (milestone ids are UUIDs, so it
+ *  can never collide). */
+export const ANCHOR_DATE = "__date";
+
+/** The editor's draft — input-shaped strings keyed by field name. The anchor
+ *  control splits into "anchor-choice" + "anchor-date". */
+export type EditorValues = Record<string, string>;
+
+export function initialEditorValues(
+  fields: EditableInput[],
+  initial: Record<string, unknown>,
+): EditorValues {
+  const values: EditorValues = {};
+  for (const f of fields) {
+    if (f.kind === "anchor") {
+      const milestoneId =
+        "milestone_id" in initial
+          ? (initial.milestone_id as string | null)
+          : f.milestoneId;
+      const standalone =
+        "standalone_deadline" in initial
+          ? (initial.standalone_deadline as string | null)
+          : f.standaloneDeadline;
+      values["anchor-choice"] = milestoneId ?? ANCHOR_DATE;
+      values["anchor-date"] = standalone ?? "";
+      continue;
+    }
+    const raw = f.field in initial ? initial[f.field] : f.value;
+    if (f.field === "position") {
+      values[f.field] = String((raw as number) + 1);
+    } else if (f.kind === "cost") {
+      values[f.field] = raw === null ? "" : String(raw);
+    } else if (f.kind === "weekday") {
+      values[f.field] = raw === null ? "1" : String(raw);
+    } else {
+      values[f.field] = raw === null ? "" : String(raw);
+    }
+  }
+  return values;
+}
+
+/** Per-field validation messages, keyed by the SAME field names the editor's
+ *  inputs use ("anchor-date" for the anchor's date input). Each message names
+ *  the violated rule — never only a generic "needs attention" line. */
+export type EditorFieldErrors = Record<string, string>;
+
+export type EditedRecordResult =
+  | { ok: true; edited: Record<string, unknown> | null }
+  | { ok: false; errors: EditorFieldErrors };
+
+const NUMBER_RULES: Record<
+  "estimated_duration_min" | "position",
+  { whole: string; min: string }
+> = {
+  estimated_duration_min: {
+    whole: "Duration must be a whole number of minutes.",
+    min: "Duration must be at least 1 minute.",
+  },
+  position: {
+    whole: "Position must be a whole number.",
+    min: "Position must be 1 or higher.",
+  },
+};
+
+/** values → the edited record, including ONLY fields that differ from the
+ *  proposal. `edited: null` = no effective edits. Invalid values come back as
+ *  per-field messages (ALL invalid fields, not just the first). */
+export function buildEditedRecord(
+  fields: EditableInput[],
+  values: EditorValues,
+): EditedRecordResult {
+  const edited: Record<string, unknown> = {};
+  const errors: EditorFieldErrors = {};
+  for (const f of fields) {
+    if (f.kind === "anchor") {
+      const choice = values["anchor-choice"] ?? ANCHOR_DATE;
+      const milestoneId = choice === ANCHOR_DATE ? null : choice;
+      const standalone =
+        choice === ANCHOR_DATE ? (values["anchor-date"] ?? "").trim() : "";
+      if (choice === ANCHOR_DATE && standalone === "") {
+        errors["anchor-date"] = "Pick a date this is needed by.";
+        continue;
+      }
+      const standaloneValue = choice === ANCHOR_DATE ? standalone : null;
+      if (
+        milestoneId !== f.milestoneId ||
+        standaloneValue !== f.standaloneDeadline
+      ) {
+        edited.milestone_id = milestoneId;
+        edited.standalone_deadline = standaloneValue;
+      }
+      continue;
+    }
+    const raw = (values[f.field] ?? "").trim();
+    if (f.kind === "text") {
+      if (raw === "") {
+        errors[f.field] = "Title can't be empty.";
+      } else if (raw !== f.value) {
+        edited[f.field] = raw;
+      }
+    } else if (f.kind === "weekday") {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < 0 || n > 6) {
+        // Unreachable through the weekday select — defensive.
+        errors[f.field] = "Weekday must be a day of the week.";
+      } else if (n !== f.value) {
+        edited[f.field] = n;
+      }
+    } else if (f.kind === "number") {
+      const rules = NUMBER_RULES[f.field];
+      const n = Number(raw);
+      if (!Number.isInteger(n)) {
+        errors[f.field] = rules.whole;
+      } else {
+        // Position is 1-based in the editor; the record stays 0-based.
+        const value = f.field === "position" ? n - 1 : n;
+        if (value < f.min) {
+          errors[f.field] = rules.min;
+        } else if (value !== f.value) {
+          edited[f.field] = value;
+        }
+      }
+    } else if (f.kind === "date") {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        errors[f.field] =
+          raw === ""
+            ? "Target date can't be empty."
+            : "Target date must be a full date.";
+      } else if (raw !== f.value) {
+        edited[f.field] = raw;
+      }
+    } else if (f.kind === "cost") {
+      const value = raw === "" ? null : Number(raw);
+      if (value !== null && (!Number.isFinite(value) || value < 0)) {
+        errors[f.field] = "Cost must be 0 or more.";
+      } else if (value !== f.value) {
+        edited[f.field] = value;
+      }
+    }
+  }
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+  return { ok: true, edited: Object.keys(edited).length > 0 ? edited : null };
+}

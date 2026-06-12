@@ -19,15 +19,19 @@ import { describe, expect, it } from "vitest";
 
 import { EMPTY_REPLAN_DIFF, type ReplanDiff } from "@/lib/ai/replan-diff";
 import {
+  ANCHOR_DATE,
+  buildEditedRecord,
   buildReplanPageModel,
   buildReplanSections,
   decisionStatus,
   enumerateChanges,
+  initialEditorValues,
   isPlaceholderDiff,
   selectDisplayProposal,
   type CurrentEquipmentLike,
   type CurrentMilestoneLike,
   type CurrentTaskLike,
+  type EditableInput,
   type ProposalRowLike,
 } from "./replan-model";
 
@@ -314,6 +318,141 @@ describe("buildReplanPageModel — modes", () => {
       status: "partially_accepted",
       decidedAtLabel: "June 9, 2026",
       changeCount: 5,
+    });
+  });
+});
+
+describe("buildEditedRecord — inline editor validation", () => {
+  // The "Long endurance hike" shape: a modify proposing weekday + duration.
+  const fields: EditableInput[] = [
+    { field: "title", kind: "text", label: "Title", value: "Long hike" },
+    { field: "weekday", kind: "weekday", label: "Weekday", value: 0 },
+    {
+      field: "estimated_duration_min",
+      kind: "number",
+      label: "Duration (minutes)",
+      value: 240,
+      min: 1,
+    },
+  ];
+  const valid = initialEditorValues(fields, {});
+
+  it("round-trips untouched values to edited: null", () => {
+    expect(buildEditedRecord(fields, valid)).toEqual({
+      ok: true,
+      edited: null,
+    });
+  });
+
+  it("includes only the fields that differ from the proposal", () => {
+    expect(
+      buildEditedRecord(fields, { ...valid, estimated_duration_min: "60" }),
+    ).toEqual({ ok: true, edited: { estimated_duration_min: 60 } });
+  });
+
+  it("names the violated duration rule, per failure", () => {
+    expect(
+      buildEditedRecord(fields, { ...valid, estimated_duration_min: "0" }),
+    ).toEqual({
+      ok: false,
+      errors: {
+        estimated_duration_min: "Duration must be at least 1 minute.",
+      },
+    });
+    expect(
+      buildEditedRecord(fields, { ...valid, estimated_duration_min: "2.5" }),
+    ).toEqual({
+      ok: false,
+      errors: {
+        estimated_duration_min: "Duration must be a whole number of minutes.",
+      },
+    });
+  });
+
+  it("collects EVERY invalid field, not just the first", () => {
+    expect(
+      buildEditedRecord(fields, {
+        ...valid,
+        title: "  ",
+        estimated_duration_min: "",
+      }),
+    ).toEqual({
+      ok: false,
+      errors: {
+        title: "Title can't be empty.",
+        estimated_duration_min: "Duration must be at least 1 minute.",
+      },
+    });
+  });
+
+  it("position is 1-based in the editor and 0-based in the record", () => {
+    const positionFields: EditableInput[] = [
+      { field: "position", kind: "number", label: "Position", value: 2, min: 0 },
+    ];
+    expect(initialEditorValues(positionFields, {})).toEqual({ position: "3" });
+    expect(buildEditedRecord(positionFields, { position: "0" })).toEqual({
+      ok: false,
+      errors: { position: "Position must be 1 or higher." },
+    });
+    expect(buildEditedRecord(positionFields, { position: "1" })).toEqual({
+      ok: true,
+      edited: { position: 0 },
+    });
+  });
+
+  it("dates and costs name their rules; an empty cost means no cost", () => {
+    const dateFields: EditableInput[] = [
+      {
+        field: "target_date",
+        kind: "date",
+        label: "Target date",
+        value: "2026-08-27",
+      },
+    ];
+    expect(buildEditedRecord(dateFields, { target_date: "" })).toEqual({
+      ok: false,
+      errors: { target_date: "Target date can't be empty." },
+    });
+    const costFields: EditableInput[] = [
+      { field: "cost_usd", kind: "cost", label: "Cost (USD)", value: 220 },
+    ];
+    expect(buildEditedRecord(costFields, { cost_usd: "-5" })).toEqual({
+      ok: false,
+      errors: { cost_usd: "Cost must be 0 or more." },
+    });
+    expect(buildEditedRecord(costFields, { cost_usd: "" })).toEqual({
+      ok: true,
+      edited: { cost_usd: null },
+    });
+  });
+
+  it("the anchor's 'by a date' requires the date, keyed to the date input", () => {
+    const anchorFields: EditableInput[] = [
+      {
+        field: "anchor",
+        kind: "anchor",
+        label: "Needed",
+        milestoneId: M1,
+        standaloneDeadline: null,
+      },
+    ];
+    expect(
+      buildEditedRecord(anchorFields, {
+        "anchor-choice": ANCHOR_DATE,
+        "anchor-date": "",
+      }),
+    ).toEqual({
+      ok: false,
+      errors: { "anchor-date": "Pick a date this is needed by." },
+    });
+    expect(
+      buildEditedRecord(anchorFields, {
+        "anchor-choice": ANCHOR_DATE,
+        "anchor-date": "2026-07-01",
+      }),
+    ).toEqual({
+      ok: true,
+      edited: { milestone_id: null, standalone_deadline: "2026-07-01" },
     });
   });
 });
