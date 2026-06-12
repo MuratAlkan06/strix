@@ -269,6 +269,7 @@ export async function generateReplan(
     }),
   );
 
+  const startedAt = Date.now();
   const message = await client.messages.parse({
     model: MODEL_SONNET,
     max_tokens: MAX_TOKENS,
@@ -277,7 +278,9 @@ export async function generateReplan(
     output_config: { format: replanOutputFormat() },
   });
 
-  logAiUsage(toUsageLog("replan", MODEL_SONNET, message.usage));
+  logAiUsage(
+    toUsageLog("replan", MODEL_SONNET, message.usage, Date.now() - startedAt),
+  );
 
   // Zod gate before anything persists: the grammar constrained the shape, but
   // the bounds JSON Schema can't carry (positive durations, weekday 0–6) are

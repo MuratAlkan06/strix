@@ -98,6 +98,7 @@ export async function generatePlan(args: GeneratePlanArgs): Promise<PlanDraft> {
     throw new PlanUnavailableError();
   }
 
+  const startedAt = Date.now();
   const message = await client.messages.parse({
     model: MODEL_SONNET,
     max_tokens: MAX_TOKENS,
@@ -106,7 +107,9 @@ export async function generatePlan(args: GeneratePlanArgs): Promise<PlanDraft> {
     output_config: { format: planOutputFormat() },
   });
 
-  logAiUsage(toUsageLog("plan", MODEL_SONNET, message.usage));
+  logAiUsage(
+    toUsageLog("plan", MODEL_SONNET, message.usage, Date.now() - startedAt),
+  );
 
   // Zod gate before anything persists: the grammar constrained the shape, but
   // the application invariants (equipment exactly-one, position references,

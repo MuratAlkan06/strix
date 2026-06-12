@@ -80,6 +80,15 @@ import { MODEL_SONNET } from "@/lib/ai/models";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Function-duration bound, seconds (issue #45). One POST streams up to
+ * 1 + DUPLICATE_FLAG_CONTINUATIONS Sonnet rounds and, on the submit round, a
+ * Haiku canonicalize pass — a multi-round worst case well under two minutes.
+ * 120s covers it with headroom while cutting a hung provider stream off long
+ * before the 300s platform default.
+ */
+export const maxDuration = 120;
+
 /** Bound on tool_result follow-up rounds per POST (duplicate-flag handling).
  *  1 + this many model calls is the per-message ceiling. */
 const DUPLICATE_FLAG_CONTINUATIONS = 2;
@@ -178,6 +187,9 @@ export async function POST(req: Request): Promise<Response> {
 
   const initialMessages = toMessageParams(asTranscript(withUser));
 
+  // Per-round wall clock for the ai_usage log line — reset whenever a
+  // continuation round starts a fresh model call.
+  let roundStartedAt = Date.now();
   let stream: MessageStream;
   try {
     stream = streamIntake({
@@ -221,7 +233,14 @@ export async function POST(req: Request): Promise<Response> {
           });
 
           const finalMessage = await currentStream.finalMessage();
-          logAiUsage(toUsageLog("intake", MODEL_SONNET, finalMessage.usage));
+          logAiUsage(
+            toUsageLog(
+              "intake",
+              MODEL_SONNET,
+              finalMessage.usage,
+              Date.now() - roundStartedAt,
+            ),
+          );
 
           const toolUses = finalMessage.content.filter(
             (b): b is ToolUseBlock => b.type === "tool_use",
@@ -294,6 +313,7 @@ export async function POST(req: Request): Promise<Response> {
               { role: "user", content: toolResults },
             ];
             continuations++;
+            roundStartedAt = Date.now();
             currentStream = streamIntake({
               messages: apiMessages,
               seed: draft.seed,

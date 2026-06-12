@@ -78,6 +78,15 @@ import { todayInTimeZone } from "@/lib/equipment-urgency";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Function-duration bound, seconds (issue #45). Same generation profile as
+ * /api/ai/plan — one non-streaming Sonnet call with max_tokens 4096 — plus
+ * the post-generation transactional persist under the per-user advisory
+ * lock; 90s is roughly 3x tail headroom over the multi-second model call
+ * while cutting a hung provider call off long before the 300s default.
+ */
+export const maxDuration = 90;
+
 const ERR_UNAUTHORIZED = "Unauthorized";
 const ERR_INVALID = "Invalid request.";
 const ERR_GOAL_NOT_FOUND = "Goal not found.";
