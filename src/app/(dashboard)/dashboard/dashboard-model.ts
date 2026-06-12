@@ -208,6 +208,11 @@ export function dashboardDateLabel(todayIso: string): string {
   }).format(new Date(parseIsoUtc(todayIso)));
 }
 
+/** "day" / "days" unit for a countdown figure — "1 day", never "1 days". */
+export function dayUnit(days: number): string {
+  return Math.abs(days) === 1 ? "day" : "days";
+}
+
 /** Greeting for an hour-of-day (0–23) in the USER's timezone. */
 export function greetingForHour(
   hour: number,

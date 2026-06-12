@@ -25,6 +25,7 @@ import {
   buildAccomplishedCards,
   buildDashboardModel,
   dashboardDateLabel,
+  dayUnit,
   goalHref,
   greetingForHour,
   shouldShowCheckInPrompt,
@@ -398,6 +399,12 @@ describe("deep links + display helpers", () => {
     expect(greetingForHour(13, "Murat")).toBe("Good afternoon, Murat.");
     expect(greetingForHour(22)).toBe("Good evening.");
     expect(greetingForHour(3, "  ")).toBe("Good evening.");
+  });
+
+  it("dayUnit pluralizes the countdown label at the 0/1/2 boundary", () => {
+    expect(dayUnit(0)).toBe("days");
+    expect(dayUnit(1)).toBe("day");
+    expect(dayUnit(2)).toBe("days");
   });
 });
 

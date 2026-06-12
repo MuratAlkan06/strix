@@ -58,6 +58,7 @@ import { HorizonHeader } from "@/components/horizon-header";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
+  dayUnit,
   goalHref,
   type AccomplishedCardModel,
   type CompleteTaskHandler,
@@ -437,7 +438,7 @@ export function ActiveDashboard({
           <CardContent className="flex flex-wrap items-center justify-between gap-4">
             <CountdownStat
               value={model.nextMilestone.daysUntil}
-              label={`days to ${model.nextMilestone.title}`}
+              label={`${dayUnit(model.nextMilestone.daysUntil)} to ${model.nextMilestone.title}`}
               sublabel={`Target: ${formatDate(model.nextMilestone.date)}`}
               size="lg"
             />
