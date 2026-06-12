@@ -53,11 +53,18 @@
  *     in-session settles into the same read-only treatment a reload shows.
  *     The status badge + quiet header treatment are unchanged.
  *   - DISMISS A11Y (issue #46): the inline editors and the Mark-complete
- *     confirm replace their triggers, so every dismiss — Escape (cancels
- *     without saving), Cancel, Done/Complete, Remove — restores keyboard
- *     focus via useRestoreFocus: back to the trigger, or to the section's
- *     Add button when Remove unmounted the row, or to the h1 when completing
- *     retired the Mark-complete button itself.
+ *     confirm replace their triggers, so focus moves both ways. OPEN moves
+ *     it inside the chrome (otherwise focus strands on <body> and the
+ *     container-level Escape handlers are unreachable): the section editors
+ *     land on their first field (the Title input — useFocusOnMount), the
+ *     Mark-complete confirm on its Cancel button (autoFocus — the SR-safe
+ *     landing for a destructive-adjacent confirm: a stray Enter can never
+ *     complete the goal, and a button pops no mobile keyboard). Every
+ *     dismiss — Escape (cancels without saving), Cancel, Done/Complete,
+ *     Remove — restores keyboard focus via useRestoreFocus: back to the
+ *     trigger, or to the section's Add button when Remove unmounted the
+ *     row, or to the h1 when completing retired the Mark-complete button
+ *     itself.
  */
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -69,6 +76,7 @@ import { CompletionScene } from "@/components/completion-scene";
 import { GoalChip } from "@/components/goal-chip";
 import { GOAL_COLOR_NAMES } from "@/lib/goal-colors";
 import { formatDate, formatUsd } from "@/lib/format";
+import { useFocusOnMount } from "@/lib/use-focus-on-mount";
 import { useRestoreFocus } from "@/lib/use-restore-focus";
 import { INTENSITY_LEVELS } from "@/lib/ai/intake-schema";
 import { intensityLabel } from "../new/intensity-confirm";
@@ -678,9 +686,16 @@ export function GoalDetail({
               This wraps the goal up. It moves to your archive a week later.
             </p>
             <div className="mt-3 flex items-center justify-between gap-2">
+              {/* autoFocus: opening the confirm unmounted the trigger, so
+                  focus must land INSIDE it (issue #46 revision) or Escape
+                  above is unreachable. Cancel is the documented landing —
+                  the safe control of a destructive-adjacent confirm (a
+                  stray Enter can never complete the goal) and a button
+                  pops no mobile keyboard. */}
               <Button
                 type="button"
                 variant="ghost"
+                autoFocus
                 disabled={pending}
                 onClick={() => setConfirmingComplete(false)}
                 className="h-11 min-h-11 px-3 text-muted-foreground"
@@ -1294,8 +1309,14 @@ function EditorFrame({
   /** Close without saving — Escape's behavior. */
   onCancel: () => void;
 }) {
+  // Focus-on-open (issue #46 revision): this editor replaced its trigger,
+  // which unmounted holding focus — without this, focus strands on <body>
+  // and the Escape handler below is unreachable. Lands on the first field
+  // (the Title/Item input — the documented landing control).
+  const frameRef = useFocusOnMount<HTMLDivElement>();
   return (
     <div
+      ref={frameRef}
       className="rounded-lg border border-ring bg-accent/20 p-3"
       onKeyDown={(e) => {
         // Escape closes the editor without saving, from anywhere inside it

@@ -20,11 +20,13 @@
  * Validation problems render as §8 warning notes (primary-toned, icon+text,
  * never red); the save error line is a calm constant, in register.
  *
- * Dismiss a11y (issue #46): an open editor replaces its trigger, so every
- * dismiss — Escape (cancels, discarding unsaved field edits), Done, Remove —
- * restores keyboard focus via useRestoreFocus: back to the control that
- * opened the editor, or to the section's Add button when Remove unmounted
- * the trigger.
+ * Dismiss a11y (issue #46): an open editor replaces its trigger, so focus
+ * moves both ways. OPEN moves it into the editor's first field (the Title
+ * input — useFocusOnMount; otherwise focus strands on <body> and the
+ * container-level Escape handler is unreachable). Every dismiss — Escape
+ * (cancels, discarding unsaved field edits), Done, Remove — restores
+ * keyboard focus via useRestoreFocus: back to the control that opened the
+ * editor, or to the section's Add button when Remove unmounted the trigger.
  */
 "use client";
 
@@ -33,6 +35,7 @@ import { ChevronDown, ChevronUp, CircleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useFocusOnMount } from "@/lib/use-focus-on-mount";
 import { useRestoreFocus } from "@/lib/use-restore-focus";
 import type { PlanDraft } from "@/lib/ai/plan-schema";
 import {
@@ -526,8 +529,14 @@ function EditorFrame({
   /** Close without committing the fields — Escape's behavior. */
   onCancel: () => void;
 }) {
+  // Focus-on-open (issue #46 revision): this editor replaced its trigger,
+  // which unmounted holding focus — without this, focus strands on <body>
+  // and the Escape handler below is unreachable. Lands on the first field
+  // (the Title/Item input — the documented landing control).
+  const frameRef = useFocusOnMount<HTMLDivElement>();
   return (
     <div
+      ref={frameRef}
       className="rounded-lg border border-ring bg-accent/20 p-3"
       onKeyDown={(e) => {
         // Escape closes the editor without committing, from anywhere inside

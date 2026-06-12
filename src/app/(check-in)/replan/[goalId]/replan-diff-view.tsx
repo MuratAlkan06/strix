@@ -17,6 +17,9 @@
  *     change's own fields and marks the change accepted — the edited value
  *     is what applies, echoed under the proposal as "Your version". Escape
  *     anywhere inside the editor cancels it (the Cancel button's behavior);
+ *     opening moves focus onto the editor's first proposed field
+ *     (useFocusOnMount, issue #46 revision — the ✎ trigger unmounted, so
+ *     focus would otherwise strand on <body> with Escape unreachable);
  *     every dismiss — Cancel, Escape, or a saved edit — restores keyboard
  *     focus to the ✎ trigger that opened the editor (useRestoreFocus,
  *     issue #46); a failed save marks each invalid field (aria-invalid +
@@ -38,6 +41,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GoalChip } from "@/components/goal-chip";
 import { cn } from "@/lib/utils";
+import { useFocusOnMount } from "@/lib/use-focus-on-mount";
 import { useRestoreFocus } from "@/lib/use-restore-focus";
 import {
   requestReplanGeneration,
@@ -653,6 +657,11 @@ function ChangeEditor({
   const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({});
   const hasErrors = Object.keys(fieldErrors).length > 0;
   const idBase = editorIdBase(row.key);
+  // Focus-on-open (issue #46 revision): this editor replaced its ✎ trigger,
+  // which unmounted holding focus — without this, focus strands on <body>
+  // and the Escape handler below is unreachable. Lands on the first proposed
+  // field (a select or input, whichever the change carries first).
+  const frameRef = useFocusOnMount<HTMLDivElement>();
 
   function set(field: string, value: string) {
     setValues((prev) => ({ ...prev, [field]: value }));
@@ -679,6 +688,7 @@ function ChangeEditor({
 
   return (
     <div
+      ref={frameRef}
       className="flex flex-col gap-3 rounded-lg border border-border bg-background/40 p-3"
       onKeyDown={(e) => {
         // Escape = the Cancel button, from anywhere inside the editor.

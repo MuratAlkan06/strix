@@ -22,6 +22,9 @@
  * It never steals focus: if anything besides <body> holds focus after the
  * close commit (the user dismissed by clicking some still-mounted control,
  * like "Save goal"), nothing moves.
+ *
+ * The OPEN side of the same problem — the trigger unmounting strands focus
+ * on <body> for the editor's whole lifetime — is use-focus-on-mount.ts.
  */
 import { useCallback, useEffect, useRef } from "react";
 
