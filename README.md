@@ -91,7 +91,7 @@ pnpm ci:check-unscoped
 | `pnpm ci:check-unscoped` | Four-layer access-isolation check (unscopedDb imports, raw-client imports, scopedDb call shape — default-deny, raw driver imports) |
 | `pnpm ci:check-doc-parity` | Deterministic doc↔code parity (layer-count phrase, allowlist quotes, enum lists in PLAN.md/verify-schema, README layout-tree paths). Invariants are admitted only after a real drift burned us — see the script header. |
 | `pnpm verify:phase-0` | Run the full Phase 0 verification matrix |
-| `pnpm verify:ui` | UI gate: Playwright + axe-core (WCAG 2.1 AA, zero violations) on `/playground/dashboard` + `/playground/active-dashboard` + screenshot baselines. Production server, reduced motion. First run on a new machine: `pnpm exec playwright install chromium`. |
+| `pnpm verify:ui` | UI gate: Playwright + axe-core (WCAG 2.1 AA, zero violations) on the `/playground/*` harness states (`e2e/playground-*.spec.ts`) + screenshot baselines. Production server, reduced motion. First run on a new machine: `pnpm exec playwright install chromium`. |
 | `pnpm verify:ui:update` | Regenerate screenshot baselines for the current platform (run after an intentional visual change). |
 | `pnpm verify:db-schema` | Live-DB introspection: assert tables, enums, FKs, partial indexes match PLAN.md §2 (requires `DATABASE_URL`) |
 | `pnpm smoke:scoped-db` | Live-DB cross-user / soft-delete / forged-insert smoke test for `scopedDb` (requires `DATABASE_URL`). Self-cleaning. Re-run any time scopedDb changes. |
@@ -158,6 +158,7 @@ src/
 │   │       ├── page.tsx             # /dashboard — empty-state / active landing
 │   │       ├── active-dashboard.tsx # active composition (graduated from playground)
 │   │       ├── dashboard-model.ts   # pure view-model: Today / This week / Upcoming
+│   │       │                        #   + Accomplished cards + Friday-prompt predicate
 │   │       └── check-task.ts        # server action: today's task check-off
 │   ├── (equipment)/
 │   │   ├── layout.tsx               # authenticated equipment-shell segment

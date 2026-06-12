@@ -21,6 +21,7 @@ import {
   buildGoalDetailModel,
   effectiveIntensity,
   intensitySupportCopy,
+  isReadOnlyGoalStatus,
   isUuid,
   nextIntensityOnKey,
   resolveGoalRow,
@@ -378,5 +379,23 @@ describe("shouldShowReplanBanner — the Phase 2 flag gate", () => {
 
   it('flag "true" after a structural edit → the banner renders (Phase 2 flips this on)', () => {
     expect(shouldShowReplanBanner("true", true)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Read-only gate (phase 2 slice 6 — accomplished cards open read-only detail)
+// ---------------------------------------------------------------------------
+
+describe("isReadOnlyGoalStatus — non-active goals lose every edit affordance", () => {
+  it("active → editable (unchanged surface)", () => {
+    expect(isReadOnlyGoalStatus("active")).toBe(false);
+  });
+
+  it("completed → read-only", () => {
+    expect(isReadOnlyGoalStatus("completed")).toBe(true);
+  });
+
+  it("archived → read-only", () => {
+    expect(isReadOnlyGoalStatus("archived")).toBe(true);
   });
 });

@@ -13,6 +13,12 @@
  * ?state=overridden — intensity_override set ("brutal"): the control shows
  * the override as active with "Set for this goal."
  *
+ * ?state=completed-readonly — the SAME populated fixtures with goal status
+ * "completed" (phase 2 slice 6: an accomplished card opens read-only
+ * detail): zero edit affordances — no Edit/Add, no milestone reorder, no
+ * intensity radios (plain value text), no Mark complete, no Adjust plan.
+ * The status badge + quiet treatment render as on a real reload.
+ *
  * /playground(.*) is Clerk-excluded (src/proxy.ts); the segment layout
  * noindexes it. Out of the README tree by design.
  */
@@ -152,6 +158,9 @@ export default async function PlaygroundGoalDetailPage({
   const model = buildGoalDetailModel({
     goal: {
       ...GOAL_BASE,
+      // completed-readonly: the read-only gate engages off the status alone.
+      status:
+        selected === "completed-readonly" ? "completed" : GOAL_BASE.status,
       // Default: override UNSET → effective = intake ("challenging"),
       // copy "Follows your intake intensity".
       intensity_override: selected === "overridden" ? "brutal" : null,

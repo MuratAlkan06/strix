@@ -37,6 +37,13 @@
  *   - Replan banner: rendered ONLY when NEXT_PUBLIC_REPLAN_ENABLED === "true"
  *     AND a structural edit landed (shouldShowReplanBanner). Phase 1 ships
  *     flag-off: edits save normally, no banner anywhere.
+ *   - READ-ONLY GATE (phase 2 slice 6): non-active goals render with zero
+ *     edit affordances — no Edit/Add/Remove, no milestone reorder, no
+ *     intensity radios (the effective value shows as plain text), no Adjust
+ *     plan, no replan banner; Mark complete was already active-only. Keyed
+ *     off the LOCAL status (isReadOnlyGoalStatus), so completing a goal
+ *     in-session settles into the same read-only treatment a reload shows.
+ *     The status badge + quiet header treatment are unchanged.
  */
 import { useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, CircleAlert } from "lucide-react";
@@ -54,6 +61,7 @@ import {
   ADJUST_PLAN_SUPPORT_COPY,
   REPLAN_BANNER_COPY,
   intensitySupportCopy,
+  isReadOnlyGoalStatus,
   nextIntensityOnKey,
   shouldShowReplanBanner,
   type EffectiveIntensity,
@@ -460,7 +468,12 @@ export function GoalDetail({
 
   const milestoneTitleById = new Map(milestones.map((m) => [m.id, m.title]));
   const milestoneDateById = new Map(milestones.map((m) => [m.id, m.targetDate]));
-  const showBanner = shouldShowReplanBanner(replanFlag, structuralEdited);
+  // Non-active ⇒ zero edit affordances anywhere (keyed off LOCAL status so a
+  // just-completed goal settles read-only in-session). The banner is gated
+  // too: a finished goal has no plan left to update.
+  const readOnly = isReadOnlyGoalStatus(status);
+  const showBanner =
+    !readOnly && shouldShowReplanBanner(replanFlag, structuralEdited);
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:gap-5 sm:p-6">
@@ -555,51 +568,63 @@ export function GoalDetail({
         >
           Intensity
         </h2>
-        <div
-          role="radiogroup"
-          aria-label="Intensity"
-          className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3"
-        >
-          {INTENSITY_LEVELS.map((level, index) => {
-            const selected = intensity.value === level;
-            // Roving tabindex (APG): the selected radio is the group's one
-            // tab stop; with nothing selected the first option holds it.
-            const tabStop =
-              intensity.value === null
-                ? index === 0
-                : selected;
-            return (
-              <button
-                key={level}
-                ref={(el) => {
-                  intensityRefs.current[index] = el;
-                }}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                tabIndex={tabStop ? 0 : -1}
-                disabled={pending}
-                onClick={() => void handleIntensity(level)}
-                onKeyDown={(e) => handleIntensityKey(e, level)}
-                className={
-                  "flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-default disabled:opacity-50 " +
-                  (selected
-                    ? "border-ring bg-accent/40 text-foreground"
-                    : "border-border text-muted-foreground hover:bg-accent/20 hover:text-foreground")
-                }
-              >
-                {/* Selection is never color-only: the check glyph pairs the fill. */}
-                {selected && (
-                  <Check aria-hidden="true" className="size-4 shrink-0" />
-                )}
-                {intensityLabel(level)}
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {intensitySupportCopy(intensity.source)}
-        </p>
+        {readOnly ? (
+          // Read-only: the effective value as plain text — no radios, no
+          // re-pick affordance on a finished goal.
+          <p className="mt-3 text-sm text-foreground">
+            {intensity.value !== null
+              ? intensityLabel(intensity.value)
+              : "Not set."}
+          </p>
+        ) : (
+          <>
+            <div
+              role="radiogroup"
+              aria-label="Intensity"
+              className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3"
+            >
+              {INTENSITY_LEVELS.map((level, index) => {
+                const selected = intensity.value === level;
+                // Roving tabindex (APG): the selected radio is the group's one
+                // tab stop; with nothing selected the first option holds it.
+                const tabStop =
+                  intensity.value === null
+                    ? index === 0
+                    : selected;
+                return (
+                  <button
+                    key={level}
+                    ref={(el) => {
+                      intensityRefs.current[index] = el;
+                    }}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    tabIndex={tabStop ? 0 : -1}
+                    disabled={pending}
+                    onClick={() => void handleIntensity(level)}
+                    onKeyDown={(e) => handleIntensityKey(e, level)}
+                    className={
+                      "flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-default disabled:opacity-50 " +
+                      (selected
+                        ? "border-ring bg-accent/40 text-foreground"
+                        : "border-border text-muted-foreground hover:bg-accent/20 hover:text-foreground")
+                    }
+                  >
+                    {/* Selection is never color-only: the check glyph pairs the fill. */}
+                    {selected && (
+                      <Check aria-hidden="true" className="size-4 shrink-0" />
+                    )}
+                    {intensityLabel(level)}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {intensitySupportCopy(intensity.source)}
+            </p>
+          </>
+        )}
       </section>
 
       {/* Error line (calm, §8) ----------------------------------------------*/}
@@ -637,7 +662,7 @@ export function GoalDetail({
         <ul className="flex flex-col gap-2">
           {daily.map((item) => (
             <li key={item.id}>
-              {isEditing("daily", item.id) ? (
+              {!readOnly && isEditing("daily", item.id) ? (
                 <TaskEditor
                   key={item.id}
                   section="daily"
@@ -655,27 +680,32 @@ export function GoalDetail({
                       ? `${item.estimatedDurationMin} min`
                       : null,
                   ]}
-                  onEdit={() => openEditor({ section: "daily", id: item.id })}
+                  onEdit={
+                    readOnly
+                      ? undefined
+                      : () => openEditor({ section: "daily", id: item.id })
+                  }
                 />
               )}
             </li>
           ))}
         </ul>
-        {isEditing("daily", null) ? (
-          <TaskEditor
-            section="daily"
-            initial={null}
-            pending={pending}
-            error={error}
-            onDone={(fields) => void saveTask("daily", null, fields)}
-            onRemove={() => openEditor(null)}
-          />
-        ) : (
-          <AddButton
-            label="Add a habit"
-            onClick={() => openEditor({ section: "daily", id: null })}
-          />
-        )}
+        {!readOnly &&
+          (isEditing("daily", null) ? (
+            <TaskEditor
+              section="daily"
+              initial={null}
+              pending={pending}
+              error={error}
+              onDone={(fields) => void saveTask("daily", null, fields)}
+              onRemove={() => openEditor(null)}
+            />
+          ) : (
+            <AddButton
+              label="Add a habit"
+              onClick={() => openEditor({ section: "daily", id: null })}
+            />
+          ))}
       </Section>
 
       {/* Weekly sessions ------------------------------------------------------*/}
@@ -688,7 +718,7 @@ export function GoalDetail({
         <ul className="flex flex-col gap-2">
           {weekly.map((item) => (
             <li key={item.id}>
-              {isEditing("weekly", item.id) ? (
+              {!readOnly && isEditing("weekly", item.id) ? (
                 <TaskEditor
                   key={item.id}
                   section="weekly"
@@ -709,27 +739,32 @@ export function GoalDetail({
                       ? `${item.estimatedDurationMin} min`
                       : null,
                   ]}
-                  onEdit={() => openEditor({ section: "weekly", id: item.id })}
+                  onEdit={
+                    readOnly
+                      ? undefined
+                      : () => openEditor({ section: "weekly", id: item.id })
+                  }
                 />
               )}
             </li>
           ))}
         </ul>
-        {isEditing("weekly", null) ? (
-          <TaskEditor
-            section="weekly"
-            initial={null}
-            pending={pending}
-            error={error}
-            onDone={(fields) => void saveTask("weekly", null, fields)}
-            onRemove={() => openEditor(null)}
-          />
-        ) : (
-          <AddButton
-            label="Add a session"
-            onClick={() => openEditor({ section: "weekly", id: null })}
-          />
-        )}
+        {!readOnly &&
+          (isEditing("weekly", null) ? (
+            <TaskEditor
+              section="weekly"
+              initial={null}
+              pending={pending}
+              error={error}
+              onDone={(fields) => void saveTask("weekly", null, fields)}
+              onRemove={() => openEditor(null)}
+            />
+          ) : (
+            <AddButton
+              label="Add a session"
+              onClick={() => openEditor({ section: "weekly", id: null })}
+            />
+          ))}
       </Section>
 
       {/* Milestones (timeline) ------------------------------------------------*/}
@@ -742,7 +777,7 @@ export function GoalDetail({
         <ol className="flex flex-col gap-2">
           {milestones.map((item, index) => (
             <li key={item.id}>
-              {isEditing("milestones", item.id) ? (
+              {!readOnly && isEditing("milestones", item.id) ? (
                 <MilestoneEditor
                   key={item.id}
                   initial={item}
@@ -760,34 +795,42 @@ export function GoalDetail({
                       ? `Done ${formatDate(item.completedOn)}`
                       : null
                   }
-                  onEdit={() =>
-                    openEditor({ section: "milestones", id: item.id })
+                  onEdit={
+                    readOnly
+                      ? undefined
+                      : () => openEditor({ section: "milestones", id: item.id })
                   }
-                  reorder={{
-                    upDisabled: pending || index === 0,
-                    downDisabled: pending || index === milestones.length - 1,
-                    onUp: () => void moveMilestone(item.id, "up"),
-                    onDown: () => void moveMilestone(item.id, "down"),
-                  }}
+                  reorder={
+                    readOnly
+                      ? undefined
+                      : {
+                          upDisabled: pending || index === 0,
+                          downDisabled:
+                            pending || index === milestones.length - 1,
+                          onUp: () => void moveMilestone(item.id, "up"),
+                          onDown: () => void moveMilestone(item.id, "down"),
+                        }
+                  }
                 />
               )}
             </li>
           ))}
         </ol>
-        {isEditing("milestones", null) ? (
-          <MilestoneEditor
-            initial={null}
-            pending={pending}
-            error={error}
-            onDone={(fields) => void saveMilestone(null, fields)}
-            onRemove={() => openEditor(null)}
-          />
-        ) : (
-          <AddButton
-            label="Add a milestone"
-            onClick={() => openEditor({ section: "milestones", id: null })}
-          />
-        )}
+        {!readOnly &&
+          (isEditing("milestones", null) ? (
+            <MilestoneEditor
+              initial={null}
+              pending={pending}
+              error={error}
+              onDone={(fields) => void saveMilestone(null, fields)}
+              onRemove={() => openEditor(null)}
+            />
+          ) : (
+            <AddButton
+              label="Add a milestone"
+              onClick={() => openEditor({ section: "milestones", id: null })}
+            />
+          ))}
       </Section>
 
       {/* Equipment -------------------------------------------------------------*/}
@@ -809,7 +852,7 @@ export function GoalDetail({
                 : item.standaloneDeadline;
             return (
               <li key={item.id}>
-                {isEditing("equipment", item.id) ? (
+                {!readOnly && isEditing("equipment", item.id) ? (
                   <EquipmentEditor
                     key={item.id}
                     initial={item}
@@ -829,8 +872,10 @@ export function GoalDetail({
                       formatUsd(item.costUsd),
                     ]}
                     done={item.purchased ? "Purchased" : null}
-                    onEdit={() =>
-                      openEditor({ section: "equipment", id: item.id })
+                    onEdit={
+                      readOnly
+                        ? undefined
+                        : () => openEditor({ section: "equipment", id: item.id })
                     }
                   />
                 )}
@@ -838,37 +883,41 @@ export function GoalDetail({
             );
           })}
         </ul>
-        {isEditing("equipment", null) ? (
-          <EquipmentEditor
-            initial={null}
-            milestones={milestones}
-            pending={pending}
-            error={error}
-            onDone={(fields) => void saveEquipment(null, fields)}
-            onRemove={() => openEditor(null)}
-          />
-        ) : (
-          <AddButton
-            label="Add an item"
-            onClick={() => openEditor({ section: "equipment", id: null })}
-          />
-        )}
+        {!readOnly &&
+          (isEditing("equipment", null) ? (
+            <EquipmentEditor
+              initial={null}
+              milestones={milestones}
+              pending={pending}
+              error={error}
+              onDone={(fields) => void saveEquipment(null, fields)}
+              onRemove={() => openEditor(null)}
+            />
+          ) : (
+            <AddButton
+              label="Add an item"
+              onClick={() => openEditor({ section: "equipment", id: null })}
+            />
+          ))}
       </Section>
 
-      {/* Adjust plan — honest Phase 1 placeholder ------------------------------*/}
-      <div className="flex flex-col gap-1.5 pb-6">
-        <Button
-          type="button"
-          variant="outline"
-          disabled
-          className="h-11 min-h-11 w-full px-5 sm:w-fit"
-        >
-          Adjust plan
-        </Button>
-        <p className="text-sm text-muted-foreground">
-          {ADJUST_PLAN_SUPPORT_COPY}
-        </p>
-      </div>
+      {/* Adjust plan — honest Phase 1 placeholder; gone read-only (a finished
+          goal has no plan adjustments coming) ----------------------------------*/}
+      {!readOnly && (
+        <div className="flex flex-col gap-1.5 pb-6">
+          <Button
+            type="button"
+            variant="outline"
+            disabled
+            className="h-11 min-h-11 w-full px-5 sm:w-fit"
+          >
+            Adjust plan
+          </Button>
+          <p className="text-sm text-muted-foreground">
+            {ADJUST_PLAN_SUPPORT_COPY}
+          </p>
+        </div>
+      )}
     </main>
   );
 }
@@ -928,7 +977,8 @@ function ItemRow({
   done?: string | null;
   /** Strike the title (purchased equipment stays visible, struck). */
   struck?: boolean;
-  onEdit: () => void;
+  /** Absent on a read-only (non-active) goal — no Edit button renders. */
+  onEdit?: () => void;
   reorder?: ReorderControls;
 }) {
   const displayTitle = title.trim() === "" ? "Untitled" : title;
@@ -982,15 +1032,17 @@ function ItemRow({
             </Button>
           </div>
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={onEdit}
-          aria-label={`Edit ${displayTitle}`}
-          className="h-11 min-h-11 shrink-0 px-3"
-        >
-          Edit
-        </Button>
+        {onEdit && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onEdit}
+            aria-label={`Edit ${displayTitle}`}
+            className="h-11 min-h-11 shrink-0 px-3"
+          >
+            Edit
+          </Button>
+        )}
       </div>
     </div>
   );
