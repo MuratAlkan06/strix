@@ -134,6 +134,24 @@ export function nextIntensityOnKey(
 }
 
 // ---------------------------------------------------------------------------
+// Read-only gate (phase-2-close-the-loop "Accomplished section": tap →
+// read-only goal detail)
+// ---------------------------------------------------------------------------
+
+/**
+ * Non-active goals render read-only: NO edit affordances anywhere — no
+ * Edit/Add/Remove, no milestone reorder, no intensity radios, no Mark
+ * complete, no Adjust plan, no replan banner. The view keys this off its
+ * LOCAL status state, so a goal completed in-session settles into the same
+ * read-only treatment a reload would show. Active goals are untouched.
+ */
+export function isReadOnlyGoalStatus(
+  status: "active" | "completed" | "archived",
+): boolean {
+  return status !== "active";
+}
+
+// ---------------------------------------------------------------------------
 // View model
 // ---------------------------------------------------------------------------
 

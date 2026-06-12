@@ -11,7 +11,7 @@
 ### Weekly check-in UI
 
 - Route: `app/(check-in)/check-in/page.tsx`.
-- Surfaces as a top-of-dashboard prompt every Friday (in user's timezone) until completed for the current week. Manually accessible any time.
+- Surfaces as a top-of-dashboard prompt every Friday **and Saturday** (in user's timezone; the week's last two days — weekdays 5–6 of the Sun–Sat week) until handled for the current week: ANY `weekly_check_ins` row, submitted or skipped, retires the prompt. Manually accessible any time.
 - Form:
   - "How did this week feel?" — one-tap selector: `too_easy | right | too_hard`.
   - "Anything to tell your plan?" — optional free-text notes.
@@ -117,8 +117,8 @@ The AI's response is parsed and validated against this schema before persisting.
 ### Accomplished section on dashboard
 
 - Appears below the upcoming section once `count(goals where status IN ('completed','archived')) >= 1`.
-- Shows completed/archived goals as small cards with goal color + title + completion date. Tap to view (read-only goal detail).
-- Retention surface per spec §6 — don't hide it after the first one.
+- Shows completed/archived goals as small cards with goal color + title + completion date (`completed_at`, which survives auto-archive; an archived row without one — possible via future archive paths — falls back to `archived_at` with an honest "Archived …" label; neither date ⇒ no date line, never a fake one). Tap to view (read-only goal detail: non-active goals render with zero edit affordances).
+- Retention surface per spec §6 — don't hide it after the first one. A user whose every goal is finished still gets the dashboard (honest empty sections + their wins), not the first-run empty state.
 
 ## Phase-specific context
 

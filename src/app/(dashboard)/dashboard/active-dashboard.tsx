@@ -22,13 +22,28 @@
  * struck and checked. Overdue due-rows carry the amber icon-paired "was due"
  * note (§8 — warning is amber, never red).
  *
+ * Phase 2 surfaces (slice 6+7):
+ *   - Check-in prompt — a quiet banner under the header on Friday/Saturday
+ *     until the week's check-in row exists (an invitation, not a nag; the
+ *     whole banner links /check-in).
+ *   - Accomplished — completed/archived goals as small quiet cards below the
+ *     section grid (SPEC §6 retention surface): goal dot + title + honest
+ *     date line, the whole card deep-linking to the read-only goal detail.
+ *     No scene tiles — the working surface stays crisp chrome (§4.5/§6).
+ *
  * Check-off is optimistic: strike immediately, insert via the server action,
  * roll back with a calm constant line on failure. An already-done result
  * (unique-constraint no-op) keeps the row checked.
  */
 import { useState } from "react";
 import Link from "next/link";
-import { Calendar, ChevronDown, CircleAlert, Package } from "lucide-react";
+import {
+  Calendar,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  Package,
+} from "lucide-react";
 
 import {
   Card,
@@ -44,6 +59,7 @@ import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   goalHref,
+  type AccomplishedCardModel,
   type CompleteTaskHandler,
   type CompleteTaskResult,
   type DashboardModel,
@@ -200,6 +216,93 @@ function DueRow({ row, today }: { row: DueRowModel; today: string }) {
   );
 }
 
+/**
+ * The Friday/Saturday check-in invitation (phase 2 slice 7) — one quiet
+ * card-toned row, the WHOLE banner a single ≥44px link to /check-in. In
+ * register: declarative and calm, never a nag; it disappears the moment the
+ * week's row (submitted or skipped) exists, so there is no dismiss chrome.
+ */
+function CheckInPromptBanner() {
+  return (
+    <Link
+      href="/check-in"
+      className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 outline-none transition-colors hover:bg-accent/20 focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
+      <span className="flex min-w-0 flex-col">
+        <span className="text-sm font-medium leading-snug text-foreground">
+          How did this week feel?
+        </span>
+        <span className="text-xs text-muted-foreground">
+          Take a minute to check in.
+        </span>
+      </span>
+      <ChevronRight
+        aria-hidden="true"
+        className="size-4 shrink-0 text-muted-foreground"
+      />
+    </Link>
+  );
+}
+
+/** "Completed Jun 5, 2026" / "Archived May 8, 2026" — or null (no fake date). */
+function accomplishedDateLine(card: AccomplishedCardModel): string | null {
+  if (card.dateIso === null) return null;
+  const verb = card.dateKind === "archived" ? "Archived" : "Completed";
+  return `${verb} ${formatDate(card.dateIso)}`;
+}
+
+/**
+ * Accomplished (phase 2 slice 6; SPEC §6) — small quiet cards for finished
+ * goals: goal dot + title (the GoalChip convention — color never the sole
+ * signal) over the honest date line. Each card is one link into the
+ * read-only goal detail. No scene art: the §4.5 brand moments stay where
+ * they are; this list is working chrome.
+ */
+function AccomplishedSection({
+  cards,
+}: {
+  cards: readonly AccomplishedCardModel[];
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <h2
+          data-slot="card-title"
+          className="font-heading text-base font-medium leading-snug"
+        >
+          Accomplished
+        </h2>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {cards.map((card) => {
+            const dateLine = accomplishedDateLine(card);
+            return (
+              <li key={card.goalId}>
+                <Link
+                  href={goalHref(card.goalId)}
+                  className="flex min-h-11 flex-col gap-0.5 rounded-lg border border-border p-3 outline-none transition-colors hover:bg-accent/20 focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <GoalChip
+                    colorIndex={card.colorIndex as 0 | 1 | 2 | 3 | 4}
+                    name={card.title}
+                    className="text-sm font-medium text-foreground"
+                  />
+                  {dateLine && (
+                    <span className="pl-3.5 text-xs tabular-nums text-muted-foreground">
+                      {dateLine}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SectionCard({
   title,
   description,
@@ -248,6 +351,11 @@ export interface ActiveDashboardProps {
   /** YYYY-MM-DD on the user's calendar — labels "Today" vs dated deadlines. */
   today: string;
   model: DashboardModel;
+  /** Completed/archived goals (buildAccomplishedCards) — empty hides the
+   *  section; once ≥1 exists it renders below the grid and never hides. */
+  accomplished: readonly AccomplishedCardModel[];
+  /** shouldShowCheckInPrompt(today, this week's rows) — the Fri/Sat banner. */
+  showCheckInPrompt: boolean;
   onComplete: CompleteTaskHandler;
 }
 
@@ -256,6 +364,8 @@ export function ActiveDashboard({
   dateLabel,
   today,
   model,
+  accomplished,
+  showCheckInPrompt,
   onComplete,
 }: ActiveDashboardProps) {
   // Optimistic check state layered over the server-derived completed flags;
@@ -311,6 +421,9 @@ export function ActiveDashboard({
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-4 sm:gap-5 sm:p-5">
       <HorizonHeader greeting={greeting} date={dateLabel} state="dawn" />
+
+      {/* Friday/Saturday check-in invitation — gone once the week has a row. */}
+      {showCheckInPrompt && <CheckInPromptBanner />}
 
       {/* Calm, constant error line — announced politely, visible in register. */}
       <p aria-live="polite" role="status" className="sr-only">
@@ -372,6 +485,10 @@ export function ActiveDashboard({
           </SectionCard>
         </div>
       </div>
+
+      {/* Accomplished — below the section grid; absent until the first win,
+          persistent after it (the retention surface, never re-hidden). */}
+      {accomplished.length > 0 && <AccomplishedSection cards={accomplished} />}
     </main>
   );
 }

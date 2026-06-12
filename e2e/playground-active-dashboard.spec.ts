@@ -21,6 +21,12 @@
  *      stays green before its Linux baselines are committed. Bootstrap with
  *      `pnpm verify:ui:update` (Linux: the matching Playwright Docker image —
  *      see DESIGN.md §11).
+ *
+ * Phase 2 slice 6+7 ADDS the accomplished / friday-prompt /
+ * accomplished-no-active states (axe + both viewports each) plus functional
+ * pins: the default state still renders NEITHER new surface (the additive
+ * proof that keeps the original baselines byte-identical), the Friday banner
+ * links /check-in, and accomplished cards deep-link to goal detail.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -112,4 +118,104 @@ test.describe("/playground/active-dashboard — active DAWN dashboard", () => {
     });
     await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
   });
+});
+
+test.describe("/playground/active-dashboard — accomplished + Friday prompt (phase 2)", () => {
+  for (const state of [
+    "accomplished",
+    "friday-prompt",
+    "accomplished-no-active",
+  ] as const) {
+    test(`${state} state has zero WCAG 2.1 AA violations (full page, no exclusions)`, async ({
+      page,
+    }) => {
+      await page.goto(`${ROUTE}?state=${state}`, { waitUntil: "networkidle" });
+      await expectNoAxeViolations(page);
+    });
+  }
+
+  test("default state still renders neither new surface (the additive proof)", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    await expect(
+      page.getByRole("heading", { name: "Accomplished" }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /check in/i })).toHaveCount(0);
+  });
+
+  test("the Friday banner links /check-in; gone from the Wednesday states", async ({
+    page,
+  }) => {
+    await page.goto(`${ROUTE}?state=friday-prompt`, {
+      waitUntil: "networkidle",
+    });
+    const banner = page.getByRole("link", {
+      name: /How did this week feel\?/,
+    });
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveAttribute("href", "/check-in");
+
+    await page.goto(`${ROUTE}?state=accomplished`, {
+      waitUntil: "networkidle",
+    });
+    await expect(
+      page.getByRole("link", { name: /How did this week feel\?/ }),
+    ).toHaveCount(0);
+  });
+
+  test("accomplished cards carry the honest date line and deep-link to goal detail", async ({
+    page,
+  }) => {
+    await page.goto(`${ROUTE}?state=accomplished`, {
+      waitUntil: "networkidle",
+    });
+    await expect(
+      page.getByRole("heading", { name: "Accomplished" }),
+    ).toBeVisible();
+    // Completed goal → "Completed …"; archived keeps its surviving
+    // completed_at; NULL completed_at falls back to "Archived …".
+    const finished = page.getByRole("link", { name: /Finished goal/ });
+    await expect(finished).toContainText("Completed Jun 5, 2026");
+    await expect(finished).toHaveAttribute("href", "/goals/g-done");
+    await expect(
+      page.getByRole("link", { name: /Couch to 5k/ }),
+    ).toContainText("Completed Apr 18, 2026");
+    await expect(
+      page.getByRole("link", { name: /Thirty days of sketching/ }),
+    ).toContainText("Archived Mar 2, 2026");
+  });
+
+  test("zero active + accomplished renders coherent empty sections, never the pre-dawn empty state", async ({
+    page,
+  }) => {
+    await page.goto(`${ROUTE}?state=accomplished-no-active`, {
+      waitUntil: "networkidle",
+    });
+    await expect(
+      page.getByText("Nothing scheduled today. Rest is part of the plan."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Accomplished" }),
+    ).toBeVisible();
+  });
+
+  for (const [state, viewport, label] of [
+    ["accomplished", { width: 375, height: 812 }, "mobile"],
+    ["accomplished", { width: 1440, height: 900 }, "desktop"],
+    ["friday-prompt", { width: 375, height: 812 }, "mobile"],
+    ["friday-prompt", { width: 1440, height: 900 }, "desktop"],
+    ["accomplished-no-active", { width: 375, height: 812 }, "mobile"],
+    ["accomplished-no-active", { width: 1440, height: 900 }, "desktop"],
+  ] as const) {
+    test(`matches the ${state} ${label} baseline (${viewport.width}×${viewport.height})`, async ({
+      page,
+    }, testInfo) => {
+      const name = `active-dashboard-${state}-${label}`;
+      skipUnlessBaseline(name, testInfo);
+      await page.setViewportSize(viewport);
+      await page.goto(`${ROUTE}?state=${state}`, { waitUntil: "networkidle" });
+      await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
+    });
+  }
 });

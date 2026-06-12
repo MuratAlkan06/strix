@@ -8,18 +8,25 @@
  * exercisable without auth.
  */
 import { ActiveDashboard } from "../../(dashboard)/dashboard/active-dashboard";
-import type { DashboardModel } from "../../(dashboard)/dashboard/dashboard-model";
+import type {
+  AccomplishedCardModel,
+  DashboardModel,
+} from "../../(dashboard)/dashboard/dashboard-model";
 
 export function ActiveDashboardHarness({
   greeting,
   dateLabel,
   today,
   model,
+  accomplished,
+  showCheckInPrompt,
 }: {
   greeting: string;
   dateLabel: string;
   today: string;
   model: DashboardModel;
+  accomplished: readonly AccomplishedCardModel[];
+  showCheckInPrompt: boolean;
 }) {
   return (
     <ActiveDashboard
@@ -27,6 +34,8 @@ export function ActiveDashboardHarness({
       dateLabel={dateLabel}
       today={today}
       model={model}
+      accomplished={accomplished}
+      showCheckInPrompt={showCheckInPrompt}
       onComplete={async () => ({ ok: true as const, alreadyDone: false })}
     />
   );

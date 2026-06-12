@@ -23,12 +23,28 @@
  * whose items are all out of range — the dashboard stays coherent with zero
  * due items; the far milestone still feeds the hero countdown).
  *
+ * Phase 2 slice 6+7 states (ADDITIVE — the two states above and their
+ * baselines are untouched; they pass accomplished=[] and a Wednesday date):
+ *   ?state=accomplished — the populated dashboard plus the Accomplished
+ *     section: one completed goal, one archived goal whose completed_at
+ *     SURVIVED auto-archive, and one archived with NULL completed_at (the
+ *     honest archived_at fallback label).
+ *   ?state=friday-prompt — the populated fixtures re-bucketed on a PINNED
+ *     Friday (2026-06-12, weekday 5) with no check-in row, so the REAL
+ *     shouldShowCheckInPrompt predicate opens the banner.
+ *   ?state=accomplished-no-active — zero active goals, ≥1 accomplished: the
+ *     coherent "all wins, nothing scheduled" dashboard (honest empty lines
+ *     above the Accomplished section, never the pre-dawn empty state).
+ *
  * /playground(.*) is Clerk-excluded (src/proxy.ts); the segment layout
  * noindexes it. Out of the README tree by design.
  */
 import {
+  buildAccomplishedCards,
   buildDashboardModel,
   dashboardDateLabel,
+  shouldShowCheckInPrompt,
+  type AccomplishedGoalLike,
   type DashboardEquipmentLike,
   type DashboardGoalLike,
   type DashboardMilestoneLike,
@@ -38,6 +54,7 @@ import {
 import { ActiveDashboardHarness } from "./harness";
 
 const TODAY = "2026-06-10"; // Wednesday → weekday 3 (0 = Sunday)
+const FRIDAY = "2026-06-12"; // Friday → weekday 5 — the prompt window opens
 
 const GOALS: DashboardGoalLike[] = [
   { id: "g-climb", title: "Climb Mont Blanc", status: "active", color_index: 0 },
@@ -258,6 +275,40 @@ const EMPTY_MILESTONES: DashboardMilestoneLike[] = [
   },
 ];
 
+// --- accomplished states: the three card archetypes -------------------------
+
+const ACCOMPLISHED_GOALS: AccomplishedGoalLike[] = [
+  // Completed, not yet auto-archived — "Completed Jun 5, 2026".
+  {
+    id: "g-done",
+    title: "Finished goal",
+    status: "completed",
+    color_index: 2,
+    completed_at: "2026-06-05T09:00:00.000Z",
+    archived_at: null,
+  },
+  // Archived a week after completion — completed_at SURVIVES auto-archive,
+  // so the card still says "Completed Apr 18, 2026".
+  {
+    id: "g-couch5k",
+    title: "Couch to 5k",
+    status: "archived",
+    color_index: 1,
+    completed_at: "2026-04-18T09:00:00.000Z",
+    archived_at: "2026-04-25T03:00:00.000Z",
+  },
+  // Archived with NULL completed_at (a future archive path) — the honest
+  // fallback label "Archived Mar 2, 2026".
+  {
+    id: "g-sketch",
+    title: "Thirty days of sketching",
+    status: "archived",
+    color_index: 3,
+    completed_at: null,
+    archived_at: "2026-03-02T03:00:00.000Z",
+  },
+];
+
 interface PageProps {
   searchParams: Promise<{ state?: string | string[] }>;
 }
@@ -268,6 +319,11 @@ export default async function PlaygroundActiveDashboardPage({
   const { state } = await searchParams;
   const selected = Array.isArray(state) ? state[0] : state;
   const empty = selected === "empty-sections";
+  const noActive = selected === "accomplished-no-active";
+  const withAccomplished = selected === "accomplished" || noActive;
+  // Every state pins its date: the Friday state re-buckets the SAME populated
+  // fixtures two days later, so the banner is judged by the real predicate.
+  const today = selected === "friday-prompt" ? FRIDAY : TODAY;
 
   const model = buildDashboardModel(
     empty
@@ -277,24 +333,38 @@ export default async function PlaygroundActiveDashboardPage({
           milestones: EMPTY_MILESTONES,
           equipment: [],
           completions: [],
-          today: TODAY,
+          today,
         }
-      : {
-          goals: GOALS,
-          tasks: TASKS,
-          milestones: MILESTONES,
-          equipment: EQUIPMENT,
-          completions: COMPLETIONS,
-          today: TODAY,
-        },
+      : noActive
+        ? {
+            goals: [],
+            tasks: [],
+            milestones: [],
+            equipment: [],
+            completions: [],
+            today,
+          }
+        : {
+            goals: GOALS,
+            tasks: TASKS,
+            milestones: MILESTONES,
+            equipment: EQUIPMENT,
+            completions: COMPLETIONS,
+            today,
+          },
   );
 
   return (
     <ActiveDashboardHarness
       greeting="Good morning."
-      dateLabel={dashboardDateLabel(TODAY)}
-      today={TODAY}
+      dateLabel={dashboardDateLabel(today)}
+      today={today}
       model={model}
+      accomplished={
+        withAccomplished ? buildAccomplishedCards(ACCOMPLISHED_GOALS) : []
+      }
+      // The REAL predicate over the pinned date — no check-in row in any state.
+      showCheckInPrompt={shouldShowCheckInPrompt(today, [])}
     />
   );
 }

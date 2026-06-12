@@ -22,6 +22,12 @@
  *               today + 14 days (inclusive boundary, matching the inclusive
  *               7/30-day convention in equipment-urgency.ts).
  *
+ * Two further dashboard concerns live here (phase-2-close-the-loop):
+ *   ACCOMPLISHED — completed/archived goals as small quiet cards
+ *                  (buildAccomplishedCards), the SPEC §6 retention surface.
+ *   CHECK-IN PROMPT — the Friday/Saturday banner predicate
+ *                  (shouldShowCheckInPrompt).
+ *
  * Week convention: weekday 0–6 with 0 = Sunday (the schema/review-UI
  * convention — WEEKDAY_LABELS in review-plan.ts, plan-schema.ts). The week
  * therefore runs Sunday → Saturday containing `today`.
@@ -78,6 +84,17 @@ export interface CompletionLike {
   recurring_task_id: string;
   /** YYYY-MM-DD (drizzle date columns come back as strings). */
   for_date: string;
+}
+
+export interface AccomplishedGoalLike {
+  id: string;
+  title: string;
+  status: "active" | "completed" | "archived";
+  color_index: number;
+  /** Set by Mark complete; SURVIVES auto-archive (Slice 5 writes only
+   *  status + archived_at), so an archived goal usually still carries it. */
+  completed_at: Date | string | null;
+  archived_at: Date | string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -440,4 +457,93 @@ export function buildDashboardModel(input: {
     ),
     nextMilestone,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Accomplished section (phase-2-close-the-loop "Accomplished section on
+// dashboard"; SPEC §6 retention surface) — completed/archived goals as small
+// quiet cards below Upcoming. Renders once ≥1 exists and never hides again.
+// ---------------------------------------------------------------------------
+
+export interface AccomplishedCardModel {
+  goalId: string;
+  title: string;
+  colorIndex: number;
+  /** YYYY-MM-DD of the win — completed_at when set, else archived_at (the
+   *  honest fallback: future archive paths may never complete the goal);
+   *  null when neither exists (render no date, never a fake one). */
+  dateIso: string | null;
+  /** Which timestamp dateIso came from — drives the honest card label
+   *  ("Completed …" vs "Archived …"). */
+  dateKind: "completed" | "archived" | null;
+}
+
+/** Timestamp (drizzle Date | string) → YYYY-MM-DD, null on bad input. */
+function timestampToIsoDate(value: Date | string | null): string | null {
+  if (value == null) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Completed AND archived goals as accomplished cards, most recent win first
+ * (null-dated cards last; title then id tiebreak so fixtures stay stable).
+ * Active goals are excluded by construction — the caller may pass any goal
+ * rows. Empty result ⇒ the section does not render (the 0 → ≥1 visibility
+ * predicate is `cards.length > 0`).
+ */
+export function buildAccomplishedCards(
+  goals: readonly AccomplishedGoalLike[],
+): AccomplishedCardModel[] {
+  return goals
+    .filter((g) => g.status === "completed" || g.status === "archived")
+    .map((g): AccomplishedCardModel => {
+      const completedOn = timestampToIsoDate(g.completed_at);
+      const archivedOn = timestampToIsoDate(g.archived_at);
+      return {
+        goalId: g.id,
+        title: g.title,
+        colorIndex: g.color_index,
+        dateIso: completedOn ?? archivedOn,
+        dateKind:
+          completedOn !== null
+            ? "completed"
+            : archivedOn !== null
+              ? "archived"
+              : null,
+      };
+    })
+    .sort((a, b) => {
+      // Descending by date; undated cards sort last.
+      const aKey = a.dateIso ?? "";
+      const bKey = b.dateIso ?? "";
+      if (aKey !== bKey) return bKey.localeCompare(aKey);
+      return a.title.localeCompare(b.title) || a.goalId.localeCompare(b.goalId);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Friday check-in prompt (phase-2-close-the-loop "Weekly check-in UI": a
+// top-of-dashboard prompt until the week is handled)
+// ---------------------------------------------------------------------------
+
+/**
+ * True when the quiet check-in banner should sit at the top of the dashboard:
+ * the user's calendar day is Friday or Saturday (weekday 5/6 — the week runs
+ * Sunday → Saturday, so the prompt covers the week's last two days) AND no
+ * weekly_check_ins row exists for the CURRENT week.
+ *
+ * `currentWeekCheckIns` is the rows for week_start_date = weekStartOf(today) —
+ * presence alone decides: a 'skipped' row counts as handled (the skip row
+ * exists precisely so this prompt knows the week is dealt with), so the
+ * banner disappears as soon as ANY row lands.
+ */
+export function shouldShowCheckInPrompt(
+  todayIso: string,
+  currentWeekCheckIns: readonly unknown[],
+): boolean {
+  if (currentWeekCheckIns.length > 0) return false;
+  const weekday = weekdayOfIso(todayIso);
+  return weekday === 5 || weekday === 6;
 }
