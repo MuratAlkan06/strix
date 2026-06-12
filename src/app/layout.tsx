@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Hanken_Grotesk, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { MotionProvider } from "@/components/motion-provider";
@@ -34,6 +34,43 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Strix",
   description: "A goal-tracking app for ambitious, sustained efforts.",
+  // PWA surface (phase 2.5 S1): manifest + iOS install tags. The icon files
+  // are the canonical wired names emitted by scripts/generate-icons.mjs —
+  // swapping the curated icon variant regenerates the files and never touches
+  // this metadata (see the script header).
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Strix",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    apple: [
+      {
+        url: "/icons/apple-touch-icon-152.png",
+        sizes: "152x152",
+        type: "image/png",
+      },
+      {
+        url: "/icons/apple-touch-icon-167.png",
+        sizes: "167x167",
+        type: "image/png",
+      },
+      {
+        url: "/icons/apple-touch-icon-180.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+  },
+};
+
+export const viewport: Viewport = {
+  // V1 Dusk --background oklch(0.18 0.035 264) as sRGB hex (browser chrome /
+  // status bar tint must match the dark ground; manifest colors mirror this).
+  themeColor: "#0a1121",
+  // Edge-to-edge on notched iPhones; safe-area insets are handled per-surface.
+  viewportFit: "cover",
 };
 
 // The whole app is behind Clerk-aware rendering; no point prerendering pages
