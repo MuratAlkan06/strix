@@ -17,8 +17,10 @@
  *     change's own fields and marks the change accepted — the edited value
  *     is what applies, echoed under the proposal as "Your version". Escape
  *     anywhere inside the editor cancels it (the Cancel button's behavior);
- *     a failed save marks each invalid field (aria-invalid + aria-describedby)
- *     with a visible message naming the rule.
+ *     every dismiss — Cancel, Escape, or a saved edit — restores keyboard
+ *     focus to the ✎ trigger that opened the editor (useRestoreFocus,
+ *     issue #46); a failed save marks each invalid field (aria-invalid +
+ *     aria-describedby) with a visible message naming the rule.
  *   - A quiet commit bar: "X accepted · Y rejected[ · Z to review]" with
  *     Apply enabled once every change is decided.
  *   - A pending proposal still holding the placeholder diff renders a
@@ -36,6 +38,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GoalChip } from "@/components/goal-chip";
 import { cn } from "@/lib/utils";
+import { useRestoreFocus } from "@/lib/use-restore-focus";
 import {
   requestReplanGeneration,
   GENERATE_FALLBACK_ERROR,
@@ -71,6 +74,11 @@ const WEEKDAY_LABELS = [
 ] as const;
 
 const KIND_LABELS = { add: "Added", modify: "Changed", remove: "Removed" } as const;
+
+/** DOM-safe id base for one change's inline editor and its ✎ trigger. */
+function editorIdBase(key: string): string {
+  return `edit-${key.replace(/[^a-zA-Z0-9-]/g, "-")}`;
+}
 
 /** Left-accent + label-dot color per change kind — paired with the text
  *  label above, never meaning on its own. */
@@ -177,6 +185,9 @@ function ReviewSurface({
     ),
   );
   const [editingKey, setEditingKey] = useState<string | null>(null);
+  // Dismissing an editor (Cancel, Escape, or a saved edit) refocuses the ✎
+  // trigger it replaced (issue #46) — the row never unmounts, so no fallback.
+  const captureFocus = useRestoreFocus(editingKey !== null);
   const [pending, setPending] = useState(false);
   const [applied, setApplied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -330,7 +341,10 @@ function ReviewSurface({
                 setDecision(row.key, "reject");
                 if (editingKey === row.key) setEditingKey(null);
               }}
-              onEditOpen={() => setEditingKey(row.key)}
+              onEditOpen={() => {
+                captureFocus(`${editorIdBase(row.key)}-open`);
+                setEditingKey(row.key);
+              }}
               onEditCancel={() => setEditingKey(null)}
               onEditSave={(edited) => saveEdit(row.key, edited)}
             />
@@ -559,6 +573,7 @@ function ChangeCard({
           {editable.length > 0 && (
             <button
               type="button"
+              id={`${editorIdBase(row.key)}-open`}
               aria-label={`Edit: ${row.title}`}
               onClick={onEditOpen}
               className="inline-flex h-11 min-h-11 scroll-mb-24 cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors outline-none hover:bg-accent/20 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -637,7 +652,7 @@ function ChangeEditor({
   );
   const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({});
   const hasErrors = Object.keys(fieldErrors).length > 0;
-  const idBase = `edit-${row.key.replace(/[^a-zA-Z0-9-]/g, "-")}`;
+  const idBase = editorIdBase(row.key);
 
   function set(field: string, value: string) {
     setValues((prev) => ({ ...prev, [field]: value }));

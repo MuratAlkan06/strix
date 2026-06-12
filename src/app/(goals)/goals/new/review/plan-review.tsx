@@ -19,6 +19,12 @@
  *
  * Validation problems render as §8 warning notes (primary-toned, icon+text,
  * never red); the save error line is a calm constant, in register.
+ *
+ * Dismiss a11y (issue #46): an open editor replaces its trigger, so every
+ * dismiss — Escape (cancels, discarding unsaved field edits), Done, Remove —
+ * restores keyboard focus via useRestoreFocus: back to the control that
+ * opened the editor, or to the section's Add button when Remove unmounted
+ * the trigger.
  */
 "use client";
 
@@ -27,6 +33,7 @@ import { ChevronDown, ChevronUp, CircleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useRestoreFocus } from "@/lib/use-restore-focus";
 import type { PlanDraft } from "@/lib/ai/plan-schema";
 import {
   planEditReducer,
@@ -88,6 +95,7 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
+  const captureFocus = useRestoreFocus(editing !== null);
 
   function isEditing(section: PlanSection, id: string) {
     return editing?.section === section && editing.id === id;
@@ -97,10 +105,19 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
     return issues.find((i) => i.section === section && i.id === id) ?? null;
   }
 
+  /** Open an item's editor, remembering its Edit button so a dismiss can
+   *  refocus it (the section's Add button when Remove unmounts the row). */
+  function openEditor(section: PlanSection, id: string) {
+    captureFocus(`${id}-edit`, `add-${section}`);
+    setEditing({ section, id });
+  }
+
   function addItem(section: PlanSection) {
     // The reducer assigns `n${nextId}` — known before dispatch, so the new
-    // item opens directly in its edit form.
+    // item opens directly in its edit form. The Add button is the trigger
+    // every dismiss returns focus to.
     const newId = `n${state.nextId}`;
+    captureFocus(`add-${section}`);
     dispatch({ type: "add", section });
     setEditing({ section, id: newId });
   }
@@ -180,6 +197,7 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
                     dispatch({ type: "remove", section: "daily", id: item.id });
                     setEditing(null);
                   }}
+                  onCancel={() => setEditing(null)}
                 />
               ) : (
                 <ItemRow
@@ -191,13 +209,14 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
                   ]}
                   secondary={item.description || null}
                   issue={issueFor("daily", item.id)}
-                  onEdit={() => setEditing({ section: "daily", id: item.id })}
+                  editId={`${item.id}-edit`}
+                  onEdit={() => openEditor("daily", item.id)}
                 />
               )}
             </li>
           ))}
         </ul>
-        <AddButton label="Add a habit" onClick={() => addItem("daily")} />
+        <AddButton id="add-daily" label="Add a habit" onClick={() => addItem("daily")} />
       </Section>
 
       {/* Weekly sessions -------------------------------------------------- */}
@@ -216,6 +235,7 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
                     dispatch({ type: "remove", section: "weekly", id: item.id });
                     setEditing(null);
                   }}
+                  onCancel={() => setEditing(null)}
                 />
               ) : (
                 <ItemRow
@@ -228,13 +248,14 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
                   ]}
                   secondary={item.description || null}
                   issue={issueFor("weekly", item.id)}
-                  onEdit={() => setEditing({ section: "weekly", id: item.id })}
+                  editId={`${item.id}-edit`}
+                  onEdit={() => openEditor("weekly", item.id)}
                 />
               )}
             </li>
           ))}
         </ul>
-        <AddButton label="Add a session" onClick={() => addItem("weekly")} />
+        <AddButton id="add-weekly" label="Add a session" onClick={() => addItem("weekly")} />
       </Section>
 
       {/* Milestones (ordered; explicit reorder controls) ------------------ */}
@@ -253,6 +274,7 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
                     dispatch({ type: "remove", section: "milestones", id: item.id });
                     setEditing(null);
                   }}
+                  onCancel={() => setEditing(null)}
                 />
               ) : (
                 <ItemRow
@@ -260,7 +282,8 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
                   meta={[item.target_date ? formatDate(item.target_date) : null]}
                   secondary={null}
                   issue={issueFor("milestones", item.id)}
-                  onEdit={() => setEditing({ section: "milestones", id: item.id })}
+                  editId={`${item.id}-edit`}
+                  onEdit={() => openEditor("milestones", item.id)}
                   reorder={{
                     upDisabled: index === 0,
                     downDisabled: index === state.milestones.length - 1,
@@ -274,7 +297,11 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
             </li>
           ))}
         </ol>
-        <AddButton label="Add a milestone" onClick={() => addItem("milestones")} />
+        <AddButton
+          id="add-milestones"
+          label="Add a milestone"
+          onClick={() => addItem("milestones")}
+        />
       </Section>
 
       {/* Equipment --------------------------------------------------------- */}
@@ -303,6 +330,7 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
                       dispatch({ type: "remove", section: "equipment", id: item.id });
                       setEditing(null);
                     }}
+                    onCancel={() => setEditing(null)}
                   />
                 ) : (
                   <ItemRow
@@ -314,14 +342,15 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
                     ]}
                     secondary={null}
                     issue={issueFor("equipment", item.id)}
-                    onEdit={() => setEditing({ section: "equipment", id: item.id })}
+                    editId={`${item.id}-edit`}
+                    onEdit={() => openEditor("equipment", item.id)}
                   />
                 )}
               </li>
             );
           })}
         </ul>
-        <AddButton label="Add an item" onClick={() => addItem("equipment")} />
+        <AddButton id="add-equipment" label="Add an item" onClick={() => addItem("equipment")} />
       </Section>
 
       {/* Save -------------------------------------------------------------- */}
@@ -373,10 +402,20 @@ function Section({
   );
 }
 
-function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
+function AddButton({
+  id,
+  label,
+  onClick,
+}: {
+  /** Stable id so a dismissed editor can restore focus here (issue #46). */
+  id: string;
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <Button
       type="button"
+      id={id}
       variant="outline"
       onClick={onClick}
       className="h-11 min-h-11 w-full justify-center sm:w-auto sm:self-start sm:px-4"
@@ -398,6 +437,7 @@ function ItemRow({
   meta,
   secondary,
   issue,
+  editId,
   onEdit,
   reorder,
 }: {
@@ -405,6 +445,9 @@ function ItemRow({
   meta: Array<string | null>;
   secondary: string | null;
   issue: PlanValidationIssue | null;
+  /** Stable id for the Edit button so a dismissed editor can restore focus
+   *  to it after the row remounts (issue #46). */
+  editId: string;
   onEdit: () => void;
   reorder?: ReorderControls;
 }) {
@@ -452,6 +495,7 @@ function ItemRow({
         )}
         <Button
           type="button"
+          id={editId}
           variant="ghost"
           onClick={onEdit}
           aria-label={`Edit ${displayTitle}`}
@@ -474,13 +518,33 @@ function EditorFrame({
   children,
   onDone,
   onRemove,
+  onCancel,
 }: {
   children: React.ReactNode;
   onDone: () => void;
   onRemove: () => void;
+  /** Close without committing the fields — Escape's behavior. */
+  onCancel: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-ring bg-accent/20 p-3">
+    <div
+      className="rounded-lg border border-ring bg-accent/20 p-3"
+      onKeyDown={(e) => {
+        // Escape closes the editor without committing, from anywhere inside
+        // it (the replan ChangeEditor's pattern). defaultPrevented respects a
+        // native popup (an open select dropdown or date picker) consuming
+        // Escape first — don't fight the platform.
+        if (
+          e.key !== "Escape" ||
+          e.defaultPrevented ||
+          e.nativeEvent.isComposing
+        ) {
+          return;
+        }
+        e.preventDefault();
+        onCancel();
+      }}
+    >
       <div className="flex flex-col gap-3">{children}</div>
       <div className="mt-3 flex items-center justify-between gap-2">
         <Button
@@ -534,10 +598,12 @@ function DailyEditor({
   item,
   onDone,
   onRemove,
+  onCancel,
 }: {
   item: EditableDaily;
   onDone: (patch: Partial<Omit<EditableDaily, "id" | "description">>) => void;
   onRemove: () => void;
+  onCancel: () => void;
 }) {
   const [title, setTitle] = useState(item.title);
   const [duration, setDuration] = useState(
@@ -546,6 +612,7 @@ function DailyEditor({
   return (
     <EditorFrame
       onRemove={onRemove}
+      onCancel={onCancel}
       onDone={() =>
         onDone({
           title,
@@ -589,10 +656,12 @@ function WeeklyEditor({
   item,
   onDone,
   onRemove,
+  onCancel,
 }: {
   item: EditableWeekly;
   onDone: (patch: Partial<Omit<EditableWeekly, "id" | "description">>) => void;
   onRemove: () => void;
+  onCancel: () => void;
 }) {
   const [title, setTitle] = useState(item.title);
   const [weekday, setWeekday] = useState(item.weekday);
@@ -602,6 +671,7 @@ function WeeklyEditor({
   return (
     <EditorFrame
       onRemove={onRemove}
+      onCancel={onCancel}
       onDone={() =>
         onDone({
           title,
@@ -657,16 +727,19 @@ function MilestoneEditor({
   item,
   onDone,
   onRemove,
+  onCancel,
 }: {
   item: EditableMilestone;
   onDone: (patch: Partial<Omit<EditableMilestone, "id">>) => void;
   onRemove: () => void;
+  onCancel: () => void;
 }) {
   const [title, setTitle] = useState(item.title);
   const [targetDate, setTargetDate] = useState(item.target_date);
   return (
     <EditorFrame
       onRemove={onRemove}
+      onCancel={onCancel}
       onDone={() => onDone({ title, target_date: targetDate })}
     >
       <Field label="Title" htmlFor={`${item.id}-title`}>
@@ -695,11 +768,13 @@ function EquipmentEditor({
   milestones,
   onDone,
   onRemove,
+  onCancel,
 }: {
   item: EditableEquipment;
   milestones: EditableMilestone[];
   onDone: (patch: Partial<Omit<EditableEquipment, "id">>) => void;
   onRemove: () => void;
+  onCancel: () => void;
 }) {
   const [title, setTitle] = useState(item.title);
   const [cost, setCost] = useState(item.cost_usd?.toString() ?? "");
@@ -724,7 +799,7 @@ function EquipmentEditor({
   }
 
   return (
-    <EditorFrame onRemove={onRemove} onDone={commit}>
+    <EditorFrame onRemove={onRemove} onCancel={onCancel} onDone={commit}>
       <Field label="Item" htmlFor={`${item.id}-title`}>
         <Input
           id={`${item.id}-title`}

@@ -23,7 +23,9 @@
  *   3. INLINE EDITOR INTERACTION — Escape cancels exactly like the Cancel
  *      button, and a failed save marks each invalid field (aria-invalid +
  *      aria-describedby → a message naming the rule); the failed-save state
- *      is axe-rescanned. Runs on every platform.
+ *      is axe-rescanned. Every dismiss (Cancel, Escape, a saved edit)
+ *      restores keyboard focus to the ✎ trigger that opened the editor
+ *      (issue #46 — useRestoreFocus). Runs on every platform.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -136,11 +138,34 @@ test.describe("/playground/replan-diff — replan diff UI", () => {
     // The editor is gone — exactly the Cancel button's behavior…
     await expect(duration).toBeHidden();
     await expect(page.getByText("Your version")).toHaveCount(0);
+    // …focus is back on the ✎ trigger the editor replaced (issue #46)…
+    await expect(
+      page.getByRole("button", { name: "Edit: Long endurance hike" }),
+    ).toBeFocused();
     // …and the draft was discarded: reopening shows the proposal's value.
     await page
       .getByRole("button", { name: "Edit: Long endurance hike" })
       .click();
     await expect(page.getByLabel("Duration (minutes)")).toHaveValue("240");
+  });
+
+  test("Cancel and a saved edit both restore focus to the ✎ trigger (issue #46)", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    const trigger = page.getByRole("button", {
+      name: "Edit: Long endurance hike",
+    });
+    // Cancel click — the editor unmounts, the trigger remounts focused.
+    await trigger.click();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(trigger).toBeFocused();
+    // The confirming dismiss (Save edit) restores it the same way.
+    await trigger.click();
+    await page.getByLabel("Duration (minutes)").fill("180");
+    await page.getByRole("button", { name: "Save edit" }).click();
+    await expect(page.getByText("Your version")).toBeVisible();
+    await expect(trigger).toBeFocused();
   });
 
   test("a failed save marks the invalid field and names the rule (axe-clean)", async ({
