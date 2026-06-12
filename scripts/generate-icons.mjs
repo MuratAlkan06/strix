@@ -82,9 +82,11 @@ import sharp from "sharp";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "public", "icons");
 
-/** Variant wired into manifest.webmanifest + apple-touch links. PROVISIONAL
- * until the /playground/icons curation pass picks the winner. */
-const WIRED_VARIANT = "v1";
+/** Variant wired into manifest.webmanifest + apple-touch links. CANONICAL:
+ * v6a "Night Watch — flat", user-curated 2026-06-12 (round 3 on
+ * /playground/icons; recorded in docs/DECISIONS.md "Visual register" +
+ * docs/DESIGN.md §10). */
+const WIRED_VARIANT = "v6a";
 
 // ---------------------------------------------------------------------------
 // OKLCH → sRGB hex (Björn Ottosson's reference OKLab matrices).
@@ -406,7 +408,7 @@ for (const id of Object.keys(VARIANTS)) {
 
 // Wired canonical set (manifest + apple-touch links reference ONLY these
 // names — swapping the winner never touches the manifest or layout).
-console.log(`wired set ← ${WIRED_VARIANT} (provisional until curation)`);
+console.log(`wired set ← ${WIRED_VARIANT} (canonical, user-curated 2026-06-12)`);
 const wired = VARIANTS[WIRED_VARIANT];
 const standard = svgFor(WIRED_VARIANT, wired.markScale);
 const maskable = svgFor(WIRED_VARIANT, wired.maskScale);

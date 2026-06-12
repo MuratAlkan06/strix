@@ -11,9 +11,10 @@
  * ground (flat, pale-on-flat, muted horizon). The decision-critical view is
  * the HOME SCREEN section up top: true-size 60px candidates on a mock dark
  * wallpaper among dummy app tiles — gradient-vs-flat judged where the icon
- * actually lives. Rounds 2 and 1 stay below for comparison. The wired set
- * (manifest + apple-touch links) is PROVISIONALLY v1 until curation decides;
- * swapping = change WIRED_VARIANT in the script and re-run.
+ * actually lives. Rounds 2 and 1 stay below for comparison. CURATION IS
+ * COMPLETE (2026-06-12): the user picked V6a, now the canonical wired set
+ * (manifest + apple-touch links). This page stays as the curation record;
+ * re-wiring ever again = change WIRED_VARIANT in the script and re-run.
  *
  * The /playground(.*) Clerk exemption in src/proxy.ts already makes this
  * route reachable without auth.
@@ -32,7 +33,7 @@ const ROUNDS: { id: string; label: string; sub: string; variants: Variant[] }[] 
         {
           id: "v6a",
           label: "V6a — Flat",
-          sub: "elevated-dusk head on the flat dusk ground",
+          sub: "elevated-dusk head on the flat dusk ground · wired (canonical)",
         },
         {
           id: "v6b",
@@ -76,7 +77,7 @@ const ROUNDS: { id: string; label: string; sub: string; variants: Variant[] }[] 
         {
           id: "v1",
           label: "V1 — Dusk Perch",
-          sub: "2-tone mark on dusk · wired (provisional)",
+          sub: "2-tone mark on dusk",
         },
         {
           id: "v2",
