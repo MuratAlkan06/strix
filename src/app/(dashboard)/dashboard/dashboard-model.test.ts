@@ -19,15 +19,19 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { todayInTimeZone } from "@/lib/equipment-urgency";
 import {
   addDays,
+  buildAccomplishedCards,
   buildDashboardModel,
   dashboardDateLabel,
   goalHref,
   greetingForHour,
+  shouldShowCheckInPrompt,
   weekdayOfIso,
   weekEndOf,
   weekStartOf,
+  type AccomplishedGoalLike,
   type DashboardEquipmentLike,
   type DashboardGoalLike,
   type DashboardMilestoneLike,
@@ -394,5 +398,196 @@ describe("deep links + display helpers", () => {
     expect(greetingForHour(13, "Murat")).toBe("Good afternoon, Murat.");
     expect(greetingForHour(22)).toBe("Good evening.");
     expect(greetingForHour(3, "  ")).toBe("Good evening.");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Accomplished section (phase 2 slice 6)
+// ---------------------------------------------------------------------------
+
+function accomplished(
+  over: Partial<AccomplishedGoalLike>,
+): AccomplishedGoalLike {
+  return {
+    id: "g-1",
+    title: "Goal",
+    status: "completed",
+    color_index: 0,
+    completed_at: null,
+    archived_at: null,
+    ...over,
+  };
+}
+
+describe("buildAccomplishedCards — completed/archived wins", () => {
+  it("returns no cards for active-only goals (section hidden at 0)", () => {
+    expect(
+      buildAccomplishedCards([accomplished({ status: "active" })]),
+    ).toEqual([]);
+  });
+
+  it("includes BOTH completed and archived goals (≥1 ⇒ section renders)", () => {
+    const cards = buildAccomplishedCards([
+      accomplished({
+        id: "g-done",
+        title: "Done",
+        status: "completed",
+        completed_at: "2026-06-01T09:00:00.000Z",
+      }),
+      accomplished({
+        id: "g-arch",
+        title: "Archived",
+        status: "archived",
+        completed_at: "2026-05-01T09:00:00.000Z",
+        archived_at: "2026-05-08T03:00:00.000Z",
+      }),
+      accomplished({ id: "g-live", status: "active" }),
+    ]);
+    expect(cards.map((c) => c.goalId)).toEqual(["g-done", "g-arch"]);
+    expect(cards.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("uses completed_at as the win date — it SURVIVES auto-archive", () => {
+    const [card] = buildAccomplishedCards([
+      accomplished({
+        status: "archived",
+        completed_at: new Date("2026-05-01T09:00:00.000Z"),
+        archived_at: "2026-05-08T03:00:00.000Z",
+      }),
+    ]);
+    expect(card).toMatchObject({ dateIso: "2026-05-01", dateKind: "completed" });
+  });
+
+  it("falls back to archived_at with the honest 'archived' kind when completed_at is NULL", () => {
+    const [card] = buildAccomplishedCards([
+      accomplished({
+        status: "archived",
+        completed_at: null,
+        archived_at: "2026-05-08T03:00:00.000Z",
+      }),
+    ]);
+    expect(card).toMatchObject({ dateIso: "2026-05-08", dateKind: "archived" });
+  });
+
+  it("renders NO date when both timestamps are missing — never a fake one", () => {
+    const [card] = buildAccomplishedCards([
+      accomplished({ status: "archived" }),
+    ]);
+    expect(card).toMatchObject({ dateIso: null, dateKind: null });
+  });
+
+  it("carries title + color for the GoalChip-convention card", () => {
+    const [card] = buildAccomplishedCards([
+      accomplished({
+        id: "g-race",
+        title: "Half marathon",
+        color_index: 3,
+        completed_at: "2026-06-01T09:00:00.000Z",
+      }),
+    ]);
+    expect(card).toMatchObject({
+      goalId: "g-race",
+      title: "Half marathon",
+      colorIndex: 3,
+    });
+    expect(goalHref(card!.goalId)).toBe("/goals/g-race");
+  });
+
+  it("orders most recent win first; undated cards last; title tiebreak", () => {
+    const cards = buildAccomplishedCards([
+      accomplished({
+        id: "g-old",
+        title: "Older win",
+        completed_at: "2026-04-01T09:00:00.000Z",
+      }),
+      accomplished({ id: "g-undated", title: "Undated", status: "archived" }),
+      accomplished({
+        id: "g-new",
+        title: "Newest win",
+        completed_at: "2026-06-01T09:00:00.000Z",
+      }),
+      accomplished({
+        id: "g-b-same-day",
+        title: "B same day",
+        completed_at: "2026-06-01T11:00:00.000Z",
+      }),
+    ]);
+    expect(cards.map((c) => c.goalId)).toEqual([
+      "g-b-same-day", // 2026-06-01, "B…" < "Newest…"
+      "g-new",
+      "g-old",
+      "g-undated",
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Friday check-in prompt (phase 2 slice 7)
+// ---------------------------------------------------------------------------
+
+describe("shouldShowCheckInPrompt — the Fri/Sat banner predicate", () => {
+  // The week of TODAY: Sun 2026-06-07 … Sat 2026-06-13.
+  const WEEK = [
+    ["2026-06-07", 0, false], // Sunday
+    ["2026-06-08", 1, false], // Monday
+    ["2026-06-09", 2, false], // Tuesday
+    ["2026-06-10", 3, false], // Wednesday
+    ["2026-06-11", 4, false], // Thursday
+    ["2026-06-12", 5, true], // Friday
+    ["2026-06-13", 6, true], // Saturday
+  ] as const;
+
+  it("with NO current-week row: shows only on Friday and Saturday", () => {
+    for (const [iso, weekday, expected] of WEEK) {
+      expect(weekdayOfIso(iso)).toBe(weekday); // pin the convention
+      expect(shouldShowCheckInPrompt(iso, [])).toBe(expected);
+    }
+  });
+
+  it("ANY current-week row hides it — on every weekday", () => {
+    for (const [iso] of WEEK) {
+      expect(shouldShowCheckInPrompt(iso, [{ feeling: "right" }])).toBe(false);
+    }
+  });
+
+  it("a SKIPPED row counts as handled (the skip row exists for this prompt)", () => {
+    expect(
+      shouldShowCheckInPrompt("2026-06-12", [{ feeling: "skipped" }]),
+    ).toBe(false);
+    expect(
+      shouldShowCheckInPrompt("2026-06-13", [{ feeling: "skipped" }]),
+    ).toBe(false);
+  });
+
+  it("judges the USER's calendar day: UTC Thursday is already Friday at UTC+14", () => {
+    // 2026-06-11T22:00Z — Thursday on the server's clock…
+    const now = new Date("2026-06-11T22:00:00.000Z");
+    expect(todayInTimeZone(undefined, now)).toBe("2026-06-11"); // Thu → hidden
+    expect(shouldShowCheckInPrompt(todayInTimeZone(undefined, now), [])).toBe(
+      false,
+    );
+    // …but Friday 2026-06-12 on Kiritimati (UTC+14) → shown.
+    const kiritimati = todayInTimeZone("Pacific/Kiritimati", now);
+    expect(kiritimati).toBe("2026-06-12");
+    expect(shouldShowCheckInPrompt(kiritimati, [])).toBe(true);
+    // The week the row lookup keys on is THEIR week, too.
+    expect(weekStartOf(kiritimati)).toBe("2026-06-07");
+  });
+
+  it("judges the USER's calendar day: UTC Saturday is still Friday at UTC-11", () => {
+    // 2026-06-13T10:00Z — Saturday in UTC, Friday 23:00 on Midway (UTC-11).
+    const now = new Date("2026-06-13T10:00:00.000Z");
+    const midway = todayInTimeZone("Pacific/Midway", now);
+    expect(midway).toBe("2026-06-12");
+    expect(shouldShowCheckInPrompt(midway, [])).toBe(true);
+  });
+
+  it("the prompt window CLOSES when the user's week rolls to Sunday early at UTC+14", () => {
+    // 2026-06-13T11:00Z — Saturday in UTC, already Sunday 01:00 on Kiritimati.
+    const now = new Date("2026-06-13T11:00:00.000Z");
+    const kiritimati = todayInTimeZone("Pacific/Kiritimati", now);
+    expect(kiritimati).toBe("2026-06-14"); // Sunday — a NEW week
+    expect(shouldShowCheckInPrompt(kiritimati, [])).toBe(false);
+    expect(weekStartOf(kiritimati)).toBe("2026-06-14"); // the row key moves on
   });
 });
