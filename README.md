@@ -147,11 +147,20 @@ src/
 │   │       └── route.test.ts        # signature-gate integration tests
 │   ├── (check-in)/
 │   │   ├── layout.tsx               # authenticated check-in-shell segment
-│   │   └── check-in/
-│   │       ├── page.tsx             # /check-in — weekly check-in form
-│   │       ├── check-in-form.tsx    # feeling + notes + replan goal picker (client)
-│   │       ├── check-in-model.ts    # pure view-model: cap math, default selection
-│   │       └── actions.ts           # server actions: submit / skip (upsert + proposals)
+│   │   ├── check-in/
+│   │   │   ├── page.tsx             # /check-in — weekly check-in form
+│   │   │   ├── check-in-form.tsx    # feeling + notes + replan goal picker
+│   │   │   │                        #   + per-goal generation fan-out (client)
+│   │   │   ├── check-in-model.ts    # pure view-model: cap math, default selection
+│   │   │   └── actions.ts           # server actions: submit / skip (upsert + proposals)
+│   │   └── replan/
+│   │       ├── generate-replan-client.ts  # the one client caller of POST /api/ai/replan
+│   │       └── [goalId]/
+│   │           ├── page.tsx         # /replan/<goalId> — diff review / generate / summary
+│   │           ├── replan-diff-view.tsx   # diff UI: ✓/✎/✕ per change + commit bar (client)
+│   │           ├── replan-model.ts  # pure view-model: change keys, before/after, modes
+│   │           ├── apply-plan.ts    # pure planner: decisions → exact table ops (id security)
+│   │           └── actions.ts       # server action: atomic decision commit (lockScope)
 │   ├── (dashboard)/
 │   │   ├── layout.tsx               # authenticated product-shell segment
 │   │   └── dashboard/
