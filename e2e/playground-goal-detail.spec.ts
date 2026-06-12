@@ -25,6 +25,15 @@
  * edit affordances — no Edit/Add buttons, no milestone reorder, no intensity
  * radios, no Mark complete, no Adjust plan — while the default active state
  * keeps every one of them (the gate must not touch active goals).
+ *
+ * Slice 4 (structural-edit replan banner) extends this spec with the three
+ * banner postures (?state=banner-visible | banner-generating | banner-error):
+ * AXE on each, functional pins (idle offer + action; quiet disabled
+ * Generating; the calm error + Try again whose retry NEVER navigates — the
+ * harness stub always fails), and screenshots for the genuinely new visual
+ * surface: the banner card itself (idle, mobile+desktop) and its error
+ * posture (mobile). Phase 1 never pinned the banner — every prior baseline
+ * ran flag-off — and generating is a label swap, so it gets no baseline.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -141,4 +150,99 @@ test.describe("/playground/goal-detail — read-only completed/archived detail",
       await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
     });
   }
+});
+
+test.describe("/playground/goal-detail — structural-edit replan banner (slice 4)", () => {
+  const BANNER_COPY = "Want me to update the rest of your plan?";
+
+  for (const state of [
+    "banner-visible",
+    "banner-generating",
+    "banner-error",
+  ] as const) {
+    test(`${state} state has zero WCAG 2.1 AA violations (full page, no exclusions)`, async ({
+      page,
+    }) => {
+      await page.goto(`${ROUTE}?state=${state}`, { waitUntil: "networkidle" });
+      await expect(page.getByText(BANNER_COPY)).toBeVisible();
+      await expectNoAxeViolations(page);
+    });
+  }
+
+  test("the default (flag-off) state never shows the banner", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    await expect(page.getByText(BANNER_COPY)).toHaveCount(0);
+  });
+
+  test("banner-visible: the offer reads with its action armed", async ({
+    page,
+  }) => {
+    await page.goto(`${ROUTE}?state=banner-visible`, {
+      waitUntil: "networkidle",
+    });
+    await expect(page.getByText(BANNER_COPY)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Yes, update it" }),
+    ).toBeEnabled();
+  });
+
+  test("banner-generating: the quiet in-flight state disables the action", async ({
+    page,
+  }) => {
+    await page.goto(`${ROUTE}?state=banner-generating`, {
+      waitUntil: "networkidle",
+    });
+    await expect(
+      page.getByRole("button", { name: "Generating" }),
+    ).toBeDisabled();
+  });
+
+  test("banner-error: calm inline retry, and retrying NEVER navigates", async ({
+    page,
+  }) => {
+    await page.goto(`${ROUTE}?state=banner-error`, {
+      waitUntil: "networkidle",
+    });
+    await expect(page.getByText("Replan generation failed.")).toBeVisible();
+    // The harness generation stub always fails — clicking Try again must
+    // settle back into the same calm error on the SAME page (no navigation
+    // on failure is the slice's acceptance criterion 2).
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByText("Replan generation failed.")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Try again" }),
+    ).toBeEnabled();
+    expect(new URL(page.url()).pathname).toBe(ROUTE);
+  });
+
+  for (const [viewport, label] of [
+    [{ width: 375, height: 812 }, "mobile"],
+    [{ width: 1440, height: 900 }, "desktop"],
+  ] as const) {
+    test(`matches the banner-visible ${label} baseline (${viewport.width}×${viewport.height})`, async ({
+      page,
+    }, testInfo) => {
+      const name = `goal-detail-banner-visible-${label}`;
+      skipUnlessBaseline(name, testInfo);
+      await page.setViewportSize(viewport);
+      await page.goto(`${ROUTE}?state=banner-visible`, {
+        waitUntil: "networkidle",
+      });
+      await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
+    });
+  }
+
+  test("matches the banner-error mobile baseline (375×812)", async ({
+    page,
+  }, testInfo) => {
+    const name = "goal-detail-banner-error-mobile";
+    skipUnlessBaseline(name, testInfo);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`${ROUTE}?state=banner-error`, {
+      waitUntil: "networkidle",
+    });
+    await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
+  });
 });

@@ -154,7 +154,8 @@ src/
 │   │   │   ├── check-in-model.ts    # pure view-model: cap math, default selection
 │   │   │   └── actions.ts           # server actions: submit / skip (upsert + proposals)
 │   │   └── replan/
-│   │       ├── generate-replan-client.ts  # the one client caller of POST /api/ai/replan
+│   │       ├── generate-replan-client.ts  # the client callers of POST /api/ai/replan
+│   │       │                        #   (weekly check-in + structural-edit banner)
 │   │       └── [goalId]/
 │   │           ├── page.tsx         # /replan/<goalId> — diff review / generate / summary
 │   │           ├── replan-diff-view.tsx   # diff UI: ✓/✎/✕ per change + commit bar (client)
