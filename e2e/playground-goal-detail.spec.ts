@@ -34,6 +34,17 @@
  * surface: the banner card itself (idle, mobile+desktop) and its error
  * posture (mobile). Phase 1 never pinned the banner — every prior baseline
  * ran flag-off — and generating is a label swap, so it gets no baseline.
+ *
+ * Issue #46 extends it again with focus pins in BOTH directions. Open: the
+ * inline editors and the Mark-complete confirm replace their triggers, so
+ * opening must move focus inside the chrome — the editors land on their
+ * first field (the Title input), the confirm on its Cancel button (the
+ * documented SR-safe landing) — asserted before any test touches a field,
+ * with Escape exercised IMMEDIATELY after open (the real keyboard path;
+ * focus stranded on <body> would make Escape a no-op). Dismiss: Escape,
+ * Cancel, Done/Complete, Remove must put keyboard focus back on the trigger
+ * (or its documented successor: the section's Add button when Remove
+ * deleted the row; the h1 when completing retired Mark complete).
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -244,5 +255,107 @@ test.describe("/playground/goal-detail — structural-edit replan banner (slice 
       waitUntil: "networkidle",
     });
     await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
+  });
+});
+
+test.describe("/playground/goal-detail — dismissing inline chrome restores focus (issue #46)", () => {
+  test("focus lands in the editor on open; Escape — immediate or mid-edit — cancels and refocuses the Edit trigger", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    const trigger = page.getByRole("button", {
+      name: "Edit Core and mobility work",
+    });
+    const title = page.getByLabel("Title", { exact: true });
+
+    // Open: focus moves INTO the editor (its first field) — never strands
+    // on <body> while the trigger is unmounted.
+    await trigger.click();
+    await expect(title).toBeFocused();
+
+    // Escape IMMEDIATELY — the test focuses no field first, so this only
+    // passes if focus-on-open made the editor's Escape handler reachable.
+    await page.keyboard.press("Escape");
+    await expect(title).toBeHidden();
+    await expect(trigger).toBeFocused();
+
+    // Reopen, draft a title, Escape mid-edit: cancels WITHOUT saving.
+    await trigger.click();
+    await title.fill("Discarded draft title");
+    await page.keyboard.press("Escape");
+    await expect(title).toBeHidden();
+    await expect(page.getByText("Core and mobility work")).toBeVisible();
+    await expect(page.getByText("Discarded draft title")).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  });
+
+  test("Done (the confirming dismiss) refocuses the Edit trigger", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    const trigger = page.getByRole("button", {
+      name: "Edit Core and mobility work",
+    });
+    await trigger.click();
+    await page.getByRole("button", { name: "Done" }).click();
+    await expect(trigger).toBeFocused();
+  });
+
+  test("Remove unmounts the row — focus falls back to the section's Add button", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    await page
+      .getByRole("button", { name: "Edit Stair climbs with a loaded pack" })
+      .click();
+    await page.getByRole("button", { name: "Remove" }).click();
+    await expect(
+      page.getByText("Stair climbs with a loaded pack"),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Add a habit" }),
+    ).toBeFocused();
+  });
+
+  test("a create opens with its Title field focused; cancelling returns focus to the Add button", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    const add = page.getByRole("button", { name: "Add a session" });
+    await add.click();
+    await expect(page.getByLabel("Title", { exact: true })).toBeFocused();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(add).toBeFocused();
+  });
+
+  test("Mark complete: the confirm opens on Cancel (the safe landing); dismiss refocuses the trigger; completing focuses the h1 successor", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    const trigger = page.getByRole("button", { name: "Mark complete" });
+    const cancel = page.getByRole("button", { name: "Cancel" });
+    // Open: focus lands on Cancel — the documented SR-safe landing of a
+    // destructive-adjacent confirm (a stray Enter can never complete the
+    // goal) — never strands on <body> while the trigger is unmounted.
+    await trigger.click();
+    await expect(cancel).toBeFocused();
+    // Cancel — the confirm chrome unmounts, the trigger remounts focused.
+    await cancel.click();
+    await expect(trigger).toBeFocused();
+    // Escape IMMEDIATELY after open behaves like Cancel — the test focuses
+    // nothing first, so this only passes because focus-on-open put focus
+    // inside the confirm where its Escape handler can hear it.
+    await trigger.click();
+    await expect(cancel).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(trigger).toBeFocused();
+    // Completing retires the trigger itself — focus lands on the h1 (the
+    // documented successor: the page's one stable landmark).
+    await trigger.click();
+    await page.getByRole("button", { name: "Complete goal" }).click();
+    await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Climb Mont Blanc next July" }),
+    ).toBeFocused();
   });
 });

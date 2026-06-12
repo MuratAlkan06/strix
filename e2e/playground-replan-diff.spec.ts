@@ -20,10 +20,16 @@
  *      bootstrap). Generate with `pnpm verify:ui:update` (Linux: the
  *      matching Playwright Docker image — see DESIGN.md §11).
  *
- *   3. INLINE EDITOR INTERACTION — Escape cancels exactly like the Cancel
- *      button, and a failed save marks each invalid field (aria-invalid +
- *      aria-describedby → a message naming the rule); the failed-save state
- *      is axe-rescanned. Runs on every platform.
+ *   3. INLINE EDITOR INTERACTION — opening the ✎ editor moves focus onto
+ *      its first proposed field (issue #46 revision — useFocusOnMount;
+ *      asserted before any test touches a field, and Escape is exercised
+ *      IMMEDIATELY after open, the real keyboard path: focus stranded on
+ *      <body> would make Escape a no-op). Escape cancels exactly like the
+ *      Cancel button, and a failed save marks each invalid field
+ *      (aria-invalid + aria-describedby → a message naming the rule); the
+ *      failed-save state is axe-rescanned. Every dismiss (Cancel, Escape, a
+ *      saved edit) restores keyboard focus to the ✎ trigger that opened the
+ *      editor (issue #46 — useRestoreFocus). Runs on every platform.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -123,24 +129,62 @@ test.describe("/playground/replan-diff — replan diff UI", () => {
     await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
   });
 
-  test("Escape inside the inline editor cancels it and discards the draft", async ({
+  test("focus lands on the editor's first field on open; Escape — immediate or mid-edit — cancels and discards the draft", async ({
     page,
   }) => {
     await page.goto(ROUTE, { waitUntil: "networkidle" });
-    await page
-      .getByRole("button", { name: "Edit: Long endurance hike" })
-      .click();
+    const trigger = page.getByRole("button", {
+      name: "Edit: Long endurance hike",
+    });
+    // This change proposes weekday + duration, so the editor's first
+    // proposed field — the focus-on-open landing — is the Weekday select.
+    const weekday = page.getByLabel("Weekday");
     const duration = page.getByLabel("Duration (minutes)");
+
+    // Open: focus moves INTO the editor — never strands on <body> while
+    // the ✎ trigger is unmounted.
+    await trigger.click();
+    await expect(weekday).toBeFocused();
+
+    // Escape IMMEDIATELY — the test focuses no field first, so this only
+    // passes if focus-on-open made the editor's Escape handler reachable.
+    await page.keyboard.press("Escape");
+    await expect(weekday).toBeHidden();
+    await expect(trigger).toBeFocused();
+
+    // Reopen, draft a value, Escape mid-edit: exactly the Cancel button's
+    // behavior…
+    await trigger.click();
     await duration.fill("999");
-    await duration.press("Escape");
-    // The editor is gone — exactly the Cancel button's behavior…
+    await page.keyboard.press("Escape");
     await expect(duration).toBeHidden();
     await expect(page.getByText("Your version")).toHaveCount(0);
+    // …focus is back on the ✎ trigger the editor replaced (issue #46)…
+    await expect(trigger).toBeFocused();
     // …and the draft was discarded: reopening shows the proposal's value.
-    await page
-      .getByRole("button", { name: "Edit: Long endurance hike" })
-      .click();
+    await trigger.click();
     await expect(page.getByLabel("Duration (minutes)")).toHaveValue("240");
+  });
+
+  test("Cancel and a saved edit both restore focus to the ✎ trigger (issue #46)", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+    const trigger = page.getByRole("button", {
+      name: "Edit: Long endurance hike",
+    });
+    // Cancel click — the editor unmounts, the trigger remounts focused.
+    // (Open lands focus on the first proposed field, per focus-on-open.)
+    await trigger.click();
+    await expect(page.getByLabel("Weekday")).toBeFocused();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(trigger).toBeFocused();
+    // The confirming dismiss (Save edit) restores it the same way.
+    await trigger.click();
+    await page.getByLabel("Duration (minutes)").fill("180");
+    await page.getByRole("button", { name: "Save edit" }).click();
+    await expect(page.getByText("Your version")).toBeVisible();
+    await expect(trigger).toBeFocused();
   });
 
   test("a failed save marks the invalid field and names the rule (axe-clean)", async ({

@@ -52,6 +52,19 @@
  *     off the LOCAL status (isReadOnlyGoalStatus), so completing a goal
  *     in-session settles into the same read-only treatment a reload shows.
  *     The status badge + quiet header treatment are unchanged.
+ *   - DISMISS A11Y (issue #46): the inline editors and the Mark-complete
+ *     confirm replace their triggers, so focus moves both ways. OPEN moves
+ *     it inside the chrome (otherwise focus strands on <body> and the
+ *     container-level Escape handlers are unreachable): the section editors
+ *     land on their first field (the Title input — useFocusOnMount), the
+ *     Mark-complete confirm on its Cancel button (autoFocus — the SR-safe
+ *     landing for a destructive-adjacent confirm: a stray Enter can never
+ *     complete the goal, and a button pops no mobile keyboard). Every
+ *     dismiss — Escape (cancels without saving), Cancel, Done/Complete,
+ *     Remove — restores keyboard focus via useRestoreFocus: back to the
+ *     trigger, or to the section's Add button when Remove unmounted the
+ *     row, or to the h1 when completing retired the Mark-complete button
+ *     itself.
  */
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -63,6 +76,8 @@ import { CompletionScene } from "@/components/completion-scene";
 import { GoalChip } from "@/components/goal-chip";
 import { GOAL_COLOR_NAMES } from "@/lib/goal-colors";
 import { formatDate, formatUsd } from "@/lib/format";
+import { useFocusOnMount } from "@/lib/use-focus-on-mount";
+import { useRestoreFocus } from "@/lib/use-restore-focus";
 import { INTENSITY_LEVELS } from "@/lib/ai/intake-schema";
 import { intensityLabel } from "../new/intensity-confirm";
 import { WEEKDAY_LABELS } from "../new/review/review-plan";
@@ -173,6 +188,10 @@ export function GoalDetail({
   const [editing, setEditing] = useState<Editing>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Focus restore on dismiss (issue #46) — one instance per replace-the-
+  // trigger surface: the section editors and the Mark-complete confirm.
+  const captureEditorFocus = useRestoreFocus(editing !== null);
+  const captureCompleteFocus = useRestoreFocus(confirmingComplete);
   // The session's trigger-set edit log (slice 4 tightening): every confirmed
   // write reports through recordEdit; structuralEditFor keeps only the
   // trigger kinds. The banner arms off the NET summary — with the flag off
@@ -188,8 +207,17 @@ export function GoalDetail({
     return editing?.section === section && editing.id === id;
   }
 
-  /** Open/close an editor, dropping any stale error from a previous attempt. */
+  /** Open/close an editor, dropping any stale error from a previous attempt.
+   *  Opening remembers the trigger (the row's Edit button, or the section's
+   *  Add button for a create) so any dismiss can refocus it; the Add button
+   *  doubles as the fallback when Remove unmounted the row. */
   function openEditor(next: Editing) {
+    if (next !== null) {
+      captureEditorFocus(
+        next.id !== null ? `${next.id}-edit` : `add-${next.section}`,
+        `add-${next.section}`,
+      );
+    }
     setError(null);
     setEditing(next);
   }
@@ -588,7 +616,14 @@ export function GoalDetail({
             />
           </div>
         )}
-        <h1 className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-[28px]">
+        {/* tabIndex={-1}: the focus target after completing retires the
+            Mark-complete trigger (issue #46) — programmatically focusable,
+            never in the tab order. */}
+        <h1
+          id="goal-title"
+          tabIndex={-1}
+          className="font-heading text-2xl font-medium tracking-tight text-foreground outline-none sm:text-[28px]"
+        >
           {model.title}
         </h1>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -614,9 +649,13 @@ export function GoalDetail({
         {status === "active" && !confirmingComplete && (
           <Button
             type="button"
+            id="mark-complete"
             variant="outline"
             disabled={pending}
             onClick={() => {
+              // Cancel/Escape refocus this button; a confirmed completion
+              // retires it, so focus lands on the h1 instead.
+              captureCompleteFocus("mark-complete", "goal-title");
               setError(null);
               setConfirmingComplete(true);
             }}
@@ -626,14 +665,37 @@ export function GoalDetail({
           </Button>
         )}
         {status === "active" && confirmingComplete && (
-          <div className="mt-1 rounded-lg border border-ring bg-accent/20 p-3">
+          <div
+            className="mt-1 rounded-lg border border-ring bg-accent/20 p-3"
+            onKeyDown={(e) => {
+              // Escape = the Cancel button (the inline-editor pattern);
+              // ignored while the write is in flight, like the buttons.
+              if (
+                e.key !== "Escape" ||
+                e.defaultPrevented ||
+                e.nativeEvent.isComposing ||
+                pending
+              ) {
+                return;
+              }
+              e.preventDefault();
+              setConfirmingComplete(false);
+            }}
+          >
             <p className="text-sm leading-relaxed text-muted-foreground">
               This wraps the goal up. It moves to your archive a week later.
             </p>
             <div className="mt-3 flex items-center justify-between gap-2">
+              {/* autoFocus: opening the confirm unmounted the trigger, so
+                  focus must land INSIDE it (issue #46 revision) or Escape
+                  above is unreachable. Cancel is the documented landing —
+                  the safe control of a destructive-adjacent confirm (a
+                  stray Enter can never complete the goal) and a button
+                  pops no mobile keyboard. */}
               <Button
                 type="button"
                 variant="ghost"
+                autoFocus
                 disabled={pending}
                 onClick={() => setConfirmingComplete(false)}
                 className="h-11 min-h-11 px-3 text-muted-foreground"
@@ -764,6 +826,7 @@ export function GoalDetail({
                   error={error}
                   onDone={(fields) => void saveTask("daily", item.id, fields)}
                   onRemove={() => void removeTask("daily", item.id)}
+                  onCancel={() => openEditor(null)}
                 />
               ) : (
                 <ItemRow
@@ -773,6 +836,7 @@ export function GoalDetail({
                       ? `${item.estimatedDurationMin} min`
                       : null,
                   ]}
+                  editId={`${item.id}-edit`}
                   onEdit={
                     readOnly
                       ? undefined
@@ -792,9 +856,11 @@ export function GoalDetail({
               error={error}
               onDone={(fields) => void saveTask("daily", null, fields)}
               onRemove={() => openEditor(null)}
+              onCancel={() => openEditor(null)}
             />
           ) : (
             <AddButton
+              id="add-daily"
               label="Add a habit"
               onClick={() => openEditor({ section: "daily", id: null })}
             />
@@ -820,6 +886,7 @@ export function GoalDetail({
                   error={error}
                   onDone={(fields) => void saveTask("weekly", item.id, fields)}
                   onRemove={() => void removeTask("weekly", item.id)}
+                  onCancel={() => openEditor(null)}
                 />
               ) : (
                 <ItemRow
@@ -832,6 +899,7 @@ export function GoalDetail({
                       ? `${item.estimatedDurationMin} min`
                       : null,
                   ]}
+                  editId={`${item.id}-edit`}
                   onEdit={
                     readOnly
                       ? undefined
@@ -851,9 +919,11 @@ export function GoalDetail({
               error={error}
               onDone={(fields) => void saveTask("weekly", null, fields)}
               onRemove={() => openEditor(null)}
+              onCancel={() => openEditor(null)}
             />
           ) : (
             <AddButton
+              id="add-weekly"
               label="Add a session"
               onClick={() => openEditor({ section: "weekly", id: null })}
             />
@@ -878,6 +948,7 @@ export function GoalDetail({
                   error={error}
                   onDone={(fields) => void saveMilestone(item.id, fields)}
                   onRemove={() => void removeMilestone(item.id)}
+                  onCancel={() => openEditor(null)}
                 />
               ) : (
                 <ItemRow
@@ -888,6 +959,7 @@ export function GoalDetail({
                       ? `Done ${formatDate(item.completedOn)}`
                       : null
                   }
+                  editId={`${item.id}-edit`}
                   onEdit={
                     readOnly
                       ? undefined
@@ -917,9 +989,11 @@ export function GoalDetail({
               error={error}
               onDone={(fields) => void saveMilestone(null, fields)}
               onRemove={() => openEditor(null)}
+              onCancel={() => openEditor(null)}
             />
           ) : (
             <AddButton
+              id="add-milestones"
               label="Add a milestone"
               onClick={() => openEditor({ section: "milestones", id: null })}
             />
@@ -954,6 +1028,7 @@ export function GoalDetail({
                     error={error}
                     onDone={(fields) => void saveEquipment(item.id, fields)}
                     onRemove={() => void removeEquipment(item.id)}
+                    onCancel={() => openEditor(null)}
                   />
                 ) : (
                   <ItemRow
@@ -965,6 +1040,7 @@ export function GoalDetail({
                       formatUsd(item.costUsd),
                     ]}
                     done={item.purchased ? "Purchased" : null}
+                    editId={`${item.id}-edit`}
                     onEdit={
                       readOnly
                         ? undefined
@@ -985,9 +1061,11 @@ export function GoalDetail({
               error={error}
               onDone={(fields) => void saveEquipment(null, fields)}
               onRemove={() => openEditor(null)}
+              onCancel={() => openEditor(null)}
             />
           ) : (
             <AddButton
+              id="add-equipment"
               label="Add an item"
               onClick={() => openEditor({ section: "equipment", id: null })}
             />
@@ -1090,10 +1168,20 @@ function Section({
   );
 }
 
-function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
+function AddButton({
+  id,
+  label,
+  onClick,
+}: {
+  /** Stable id so a dismissed editor can restore focus here (issue #46). */
+  id: string;
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <Button
       type="button"
+      id={id}
       variant="outline"
       onClick={onClick}
       className="h-11 min-h-11 w-full justify-center sm:w-auto sm:self-start sm:px-4"
@@ -1115,6 +1203,7 @@ function ItemRow({
   meta,
   done,
   struck = false,
+  editId,
   onEdit,
   reorder,
 }: {
@@ -1124,6 +1213,9 @@ function ItemRow({
   done?: string | null;
   /** Strike the title (purchased equipment stays visible, struck). */
   struck?: boolean;
+  /** Stable id for the Edit button so a dismissed editor can restore focus
+   *  to it after the row remounts (issue #46). */
+  editId: string;
   /** Absent on a read-only (non-active) goal — no Edit button renders. */
   onEdit?: () => void;
   reorder?: ReorderControls;
@@ -1182,6 +1274,7 @@ function ItemRow({
         {onEdit && (
           <Button
             type="button"
+            id={editId}
             variant="ghost"
             onClick={onEdit}
             aria-label={`Edit ${displayTitle}`}
@@ -1202,6 +1295,7 @@ function EditorFrame({
   error,
   onDone,
   onRemove,
+  onCancel,
 }: {
   children: React.ReactNode;
   pending: boolean;
@@ -1212,9 +1306,35 @@ function EditorFrame({
   error?: string | null;
   onDone: () => void;
   onRemove: () => void;
+  /** Close without saving — Escape's behavior. */
+  onCancel: () => void;
 }) {
+  // Focus-on-open (issue #46 revision): this editor replaced its trigger,
+  // which unmounted holding focus — without this, focus strands on <body>
+  // and the Escape handler below is unreachable. Lands on the first field
+  // (the Title/Item input — the documented landing control).
+  const frameRef = useFocusOnMount<HTMLDivElement>();
   return (
-    <div className="rounded-lg border border-ring bg-accent/20 p-3">
+    <div
+      ref={frameRef}
+      className="rounded-lg border border-ring bg-accent/20 p-3"
+      onKeyDown={(e) => {
+        // Escape closes the editor without saving, from anywhere inside it
+        // (the replan ChangeEditor's pattern); ignored while a write is in
+        // flight, like the buttons. defaultPrevented respects a native popup
+        // (an open select dropdown or date picker) consuming Escape first.
+        if (
+          e.key !== "Escape" ||
+          e.defaultPrevented ||
+          e.nativeEvent.isComposing ||
+          pending
+        ) {
+          return;
+        }
+        e.preventDefault();
+        onCancel();
+      }}
+    >
       <div className="flex flex-col gap-3">{children}</div>
       {error && (
         <p className="mt-3 flex items-start gap-2 text-sm leading-relaxed text-primary">
@@ -1276,6 +1396,7 @@ function TaskEditor({
   error,
   onDone,
   onRemove,
+  onCancel,
 }: {
   section: "daily" | "weekly";
   initial: TaskItemModel | null;
@@ -1287,6 +1408,7 @@ function TaskEditor({
     durationMin: number | null;
   }) => void;
   onRemove: () => void;
+  onCancel: () => void;
 }) {
   const idBase = initial?.id ?? `new-${section}`;
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -1300,6 +1422,7 @@ function TaskEditor({
       creating={initial === null}
       error={error}
       onRemove={onRemove}
+      onCancel={onCancel}
       onDone={() =>
         onDone({
           title,
@@ -1353,12 +1476,14 @@ function MilestoneEditor({
   error,
   onDone,
   onRemove,
+  onCancel,
 }: {
   initial: MilestoneItemModel | null;
   pending: boolean;
   error?: string | null;
   onDone: (fields: { title: string; targetDate: string }) => void;
   onRemove: () => void;
+  onCancel: () => void;
 }) {
   const idBase = initial?.id ?? "new-milestone";
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -1369,6 +1494,7 @@ function MilestoneEditor({
       creating={initial === null}
       error={error}
       onRemove={onRemove}
+      onCancel={onCancel}
       onDone={() => onDone({ title, targetDate })}
     >
       <Field label="Title" htmlFor={`${idBase}-title`}>
@@ -1399,6 +1525,7 @@ function EquipmentEditor({
   error,
   onDone,
   onRemove,
+  onCancel,
 }: {
   initial: EquipmentItemModel | null;
   milestones: MilestoneItemModel[];
@@ -1411,6 +1538,7 @@ function EquipmentEditor({
     standaloneDeadline: string | null;
   }) => void;
   onRemove: () => void;
+  onCancel: () => void;
 }) {
   const idBase = initial?.id ?? "new-equipment";
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -1441,6 +1569,7 @@ function EquipmentEditor({
       creating={initial === null}
       error={error}
       onRemove={onRemove}
+      onCancel={onCancel}
       onDone={commit}
     >
       <Field label="Item" htmlFor={`${idBase}-title`}>
