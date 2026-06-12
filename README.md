@@ -228,12 +228,16 @@ src/
 │   ├── analytics/{server,client}.ts # PostHog wrappers
 │   ├── inngest/
 │   │   ├── client.ts                # Inngest client
+│   │   ├── functions.ts             # the serve() registry (3 functions)
+│   │   ├── archive-completed-goals.ts # nightly cron: archive due completed goals
+│   │   ├── reset-monthly-usage-counters.ts # hourly cron shell (Phase 3 fills body)
 │   │   └── sweep-expired-goal-drafts.ts # daily cron: prune expired goal_drafts
 │   ├── equipment-deadline.ts        # derived deadline (milestone XOR standalone)
 │   ├── equipment-urgency.ts         # urgency buckets from the derived deadline
 │   ├── format.ts                    # deterministic display formatters (en-US pinned)
 │   ├── goal-colors.ts               # color assignment + the active-goal cap
 │   ├── goal-progress.ts             # milestone-derived progress + next milestone
+│   ├── goal-scene.ts                # activity_type → Scene variant (completion moment)
 │   ├── goal-seeds.ts                # empty-state tiles + the {climb,…} seed whitelist
 │   ├── limits.ts                    # free-tier usage caps (SPEC §10)
 │   └── utils.ts                     # shadcn cn() helper

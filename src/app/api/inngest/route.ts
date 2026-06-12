@@ -3,10 +3,12 @@
  * unsigned requests — without it, anyone reaching this route could trigger
  * functions that mutate or delete data.
  *
- * Functions registered later by phase:
+ * The function list lives in src/lib/inngest/functions.ts (unit-testable
+ * registry — route modules may only export handlers). Registered so far:
  *   - sweepExpiredGoalDrafts        (Phase 0/1)
  *   - archiveCompletedGoals         (Phase 2)
  *   - resetMonthlyUsageCounters     (Phase 2 stub, Phase 3 real)
+ * Functions registered later by phase:
  *   - trialReminderTomorrow         (Phase 3)
  *   - applyPendingArchive           (Phase 3)
  *   - applyPaymentFailureArchive    (Phase 3)
@@ -14,10 +16,10 @@
  */
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
-import { sweepExpiredGoalDrafts } from "@/lib/inngest/sweep-expired-goal-drafts";
+import { inngestFunctions } from "@/lib/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [sweepExpiredGoalDrafts],
+  functions: inngestFunctions,
   signingKey: process.env.INNGEST_SIGNING_KEY,
 });

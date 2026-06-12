@@ -121,6 +121,62 @@ export async function setGoalIntensity(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Goal completion (Phase 2 "Goal completion celebration + auto-archive")
+// ---------------------------------------------------------------------------
+
+const completeGoalSchema = z.object({ goalId: uuidSchema });
+
+/** Auto-archive lands 7 days after completion (phase doc: `auto_archive_at =
+ *  now + 7 days`). */
+const AUTO_ARCHIVE_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Transition an ACTIVE goal to completed: status='completed',
+ * completed_at=now, auto_archive_at=now+7d, archive_reason='user_action'.
+ * The nightly archiveCompletedGoals job (src/lib/inngest) consumes
+ * auto_archive_at; nothing else is written here.
+ *
+ * The WHERE carries `status = 'active'` as the idempotent guard: a goal that
+ * is already completed or archived matches ZERO rows — the action reports a
+ * calm failure and the row (its original completed_at/auto_archive_at
+ * included) is untouched. Per the file's scope discipline, zero rows from a
+ * non-active status is indistinguishable from a foreign or unknown id; all
+ * collapse into the same line.
+ */
+export async function completeGoal(input: {
+  goalId: string;
+}): Promise<ActionResult> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: ERR_SESSION };
+
+  const parsed = completeGoalSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: ERR_INVALID };
+
+  const now = new Date();
+  let updated: unknown[];
+  try {
+    updated = await scopedDb(userId).update(goals, {
+      set: {
+        status: "completed",
+        completed_at: now,
+        auto_archive_at: new Date(now.getTime() + AUTO_ARCHIVE_DELAY_MS),
+        archive_reason: "user_action",
+        updated_at: now,
+      },
+      where: and(eq(goals.id, parsed.data.goalId), eq(goals.status, "active")),
+    });
+  } catch {
+    return { ok: false, error: ERR_SAVE };
+  }
+  if (updated.length === 0) return { ok: false, error: ERR_NOT_FOUND };
+
+  // The goal leaves the active grid (/goals) and its items leave the
+  // dashboard buckets; both render these rows.
+  revalidateGoalSurfaces(parsed.data.goalId, ["/goals", "/dashboard"]);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // Daily habits + weekly sessions (recurring_tasks)
 // ---------------------------------------------------------------------------
 

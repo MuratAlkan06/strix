@@ -23,6 +23,10 @@
  *     history, never a hard delete.
  */
 import { INTENSITY_LEVELS } from "@/lib/ai/intake-schema";
+import {
+  sceneVariantForActivity,
+  type GoalSceneVariant,
+} from "@/lib/goal-scene";
 
 export type Intensity = (typeof INTENSITY_LEVELS)[number];
 
@@ -167,6 +171,9 @@ export interface GoalDetailModel {
   status: "active" | "completed" | "archived";
   colorIndex: number;
   targetDate: string | null;
+  /** The goal's Scene variant (intake activity_type → goal-scene mapping);
+   *  drives the CompletionScene sunrise on Mark complete. */
+  sceneVariant: GoalSceneVariant;
   intensity: EffectiveIntensity;
   daily: TaskItemModel[];
   weekly: TaskItemModel[];
@@ -242,6 +249,9 @@ export function buildGoalDetailModel(input: {
   intakeConfirmed: Intensity | null;
   /** users.intensity_preference — the chain's final fallback. */
   accountPreference: Intensity | null;
+  /** This goal's intake activity_type (null when no summary exists) — picks
+   *  the Scene variant for the completion moment. */
+  activityType: string | null;
   tasks: readonly TaskRowLike[];
   milestones: readonly MilestoneRowLike[];
   equipment: readonly EquipmentRowLike[];
@@ -282,6 +292,7 @@ export function buildGoalDetailModel(input: {
     status: input.goal.status,
     colorIndex: input.goal.color_index,
     targetDate: input.goal.target_date,
+    sceneVariant: sceneVariantForActivity(input.activityType),
     intensity: effectiveIntensity({
       override: input.goal.intensity_override,
       intakeConfirmed: input.intakeConfirmed,
@@ -333,6 +344,9 @@ export interface GoalDetailActions {
     goalId: string;
     intensity: Intensity;
   }): Promise<ActionResult>;
+  /** Active → completed transition; non-active goals fail calmly (the
+   *  idempotent guard) and the row is untouched. */
+  completeGoal(input: { goalId: string }): Promise<ActionResult>;
   addTask(input: {
     goalId: string;
     cadence: "daily" | "weekly";
