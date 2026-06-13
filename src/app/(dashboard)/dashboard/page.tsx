@@ -146,6 +146,9 @@ export default async function DashboardPage() {
       model={model}
       accomplished={accomplished}
       showCheckInPrompt={shouldShowCheckInPrompt(today, checkInRows)}
+      // Server-known half of the install-banner eligibility gate (S8): ≥1
+      // active goal. The session-count half is read per-user client-side.
+      hasActiveGoal={hasActive}
       onComplete={completeTask}
     />
   );
