@@ -104,6 +104,36 @@ function offlineIndicator(page: Page) {
   return page.getByRole("status").filter({ hasText: "Offline" });
 }
 
+/**
+ * The visible Base UI tooltip popup carrying the hint copy. Scoped to the
+ * tooltip-content slot so it never collides with the always-present sr-only
+ * aria-describedby nodes (which hold the same copy, one per task row).
+ */
+function visibleTooltip(page: Page) {
+  return page
+    .locator('[data-slot="tooltip-content"]')
+    .filter({ hasText: TOOLTIP_COPY });
+}
+
+/**
+ * Resolve a control's accessible description from its aria-describedby token
+ * list — the concatenated text of every referenced element, computed in-page
+ * the way an AT would. This is the real SR contract (announced regardless of
+ * tooltip open-state), not "a tooltip popup is visible".
+ */
+async function accessibleDescription(
+  control: ReturnType<Page["getByRole"]>,
+): Promise<string> {
+  const describedBy = await control.getAttribute("aria-describedby");
+  expect(describedBy, "control must carry aria-describedby").toBeTruthy();
+  return control.evaluate((el) => {
+    const ids = (el.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean);
+    return ids
+      .map((id) => document.getElementById(id)?.textContent?.trim() ?? "")
+      .join(" ");
+  });
+}
+
 test.describe("/~offline — the fallback screen", () => {
   test("renders the branded offline screen with zero WCAG 2.1 AA violations", async ({
     page,
@@ -150,8 +180,12 @@ test.describe("dashboard offline state — indicator + disabled check-off", () =
     // aria-disabled — visibly dimmed, inert, but still hoverable/focusable so
     // the tooltip can explain itself.
     await expect(checkbox).toBeDisabled();
+    // The hint is a REAL accessible description: aria-describedby resolves to
+    // an element carrying the copy, announced regardless of tooltip open-state
+    // — not merely a visually-painted popup.
+    expect(await accessibleDescription(checkbox)).toContain(TOOLTIP_COPY);
     await checkbox.hover();
-    await expect(page.getByText(TOOLTIP_COPY)).toBeVisible();
+    await expect(visibleTooltip(page)).toBeVisible();
     // A forced click must be a no-op: no optimistic strike offline.
     await checkbox.click({ force: true });
     await expect(checkbox).not.toBeChecked();
@@ -278,8 +312,9 @@ test.describe("service worker offline fallback (prod sw.js)", () => {
     await expect(offlineIndicator(page)).toBeVisible();
     const checkbox = page.getByRole("checkbox", { name: CHECKBOX_NAME });
     await expect(checkbox).toBeDisabled();
+    expect(await accessibleDescription(checkbox)).toContain(TOOLTIP_COPY);
     await checkbox.hover();
-    await expect(page.getByText(TOOLTIP_COPY)).toBeVisible();
+    await expect(visibleTooltip(page)).toBeVisible();
 
     expect(errors).toEqual([]);
   });

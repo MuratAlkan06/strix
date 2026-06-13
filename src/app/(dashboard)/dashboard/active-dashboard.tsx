@@ -147,6 +147,7 @@ function TaskRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = `task-details-${row.id}`;
+  const offlineHintId = `offline-hint-${row.id}`;
   return (
     <li className="flex flex-col">
       <div className="flex min-h-11 items-center gap-3 rounded-lg px-2 py-1.5">
@@ -154,9 +155,14 @@ function TaskRow({
           (offline ? (
             // Offline: same glyph, visibly disabled. aria-disabled — NOT the
             // native disabled attribute — keeps the control hoverable and
-            // focusable so the tooltip can explain itself (and AT users hear
-            // both the state and the description). It stays inert because the
-            // checkbox is controlled and no onCheckedChange is wired.
+            // focusable so the tooltip can explain itself. The visible Base UI
+            // tooltip only renders on hover/focus from a portal, so it can't be
+            // a reliable accessible description; instead the control carries
+            // aria-describedby pointing at an always-present sr-only node with
+            // the same copy, so AT users hear both the state and the
+            // description regardless of tooltip open-state. It stays inert
+            // because the checkbox is controlled and no onCheckedChange is
+            // wired.
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
@@ -165,10 +171,14 @@ function TaskRow({
                       checked={checked}
                       aria-disabled
                       aria-label={`Mark done: ${row.title}`}
+                      aria-describedby={offlineHintId}
                       className="size-5 cursor-not-allowed opacity-50 after:-inset-3 [&_svg]:size-4"
                     />
                   }
                 />
+                <span id={offlineHintId} className="sr-only">
+                  Reconnects when you&rsquo;re online.
+                </span>
                 <TooltipContent>
                   Reconnects when you&rsquo;re online.
                 </TooltipContent>
