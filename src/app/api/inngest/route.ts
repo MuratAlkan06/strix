@@ -18,6 +18,12 @@ import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
 import { inngestFunctions } from "@/lib/inngest/functions";
 
+// Background jobs (archival sweeps, monthly resets) can run well past the
+// default serverless wall clock. Allow up to 300s (ADR-0002 CS-3). Valid on
+// Vercel fluid compute, which the AI routes' 120/90/90 maxDuration already
+// rely on.
+export const maxDuration = 300;
+
 export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: inngestFunctions,
