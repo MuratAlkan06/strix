@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated service-worker bundle (gitignored; emitted by `serwist build`
+    // — serwist.config.mjs). The SOURCE (src/app/sw.ts) is linted as usual.
+    "public/sw.js",
+    "public/sw.js.map",
   ]),
 ]);
 

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Hanken_Grotesk, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { SerwistProvider } from "@serwist/next/react";
 import { MotionProvider } from "@/components/motion-provider";
 import "./globals.css";
 
@@ -92,12 +93,18 @@ export default function RootLayout({
       className={`${fraunces.variable} ${hanken.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        {/* MotionProvider sets up LazyMotion(domAnimation, strict) + MotionConfig
-            reducedMotion="user" once at the root (DESIGN.md §7); it is a client
-            component so the root layout stays a server component. */}
-        <ClerkProvider>
-          <MotionProvider>{children}</MotionProvider>
-        </ClerkProvider>
+        {/* SerwistProvider registers the service worker (public/sw.js, built by
+            `serwist build` — see serwist.config.mjs) in dev AND prod, per the
+            phase-2.5 planning doc. Client component; keeps this layout a
+            server component, same as the providers below. */}
+        <SerwistProvider swUrl="/sw.js">
+          {/* MotionProvider sets up LazyMotion(domAnimation, strict) + MotionConfig
+              reducedMotion="user" once at the root (DESIGN.md §7); it is a client
+              component so the root layout stays a server component. */}
+          <ClerkProvider>
+            <MotionProvider>{children}</MotionProvider>
+          </ClerkProvider>
+        </SerwistProvider>
       </body>
     </html>
   );

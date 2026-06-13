@@ -25,6 +25,10 @@
 /.next/
 /out/
 
+# service worker build artifact (emitted by `serwist build` — serwist.config.mjs)
+/public/sw.js
+/public/sw.js.map
+
 # production
 /build
 
