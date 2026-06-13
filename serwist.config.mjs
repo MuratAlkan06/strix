@@ -34,18 +34,28 @@ function resolveBuildId() {
   }
 }
 
+const buildId = resolveBuildId();
+
 export default serwist({
   swSrc: "src/app/sw.ts",
   swDest: "public/sw.js",
-  // S4 ships EXPLICIT runtime caching only (the planning doc's strategy
-  // table); the full static precache manifest stays OFF so the precache layer
-  // cannot shadow the versioned strix-* runtime caches. The injection point
-  // stays wired in sw.ts — S6 (offline fallback) re-enables targeted precache
-  // entries through this config without touching the runtime rules.
-  disablePrecacheManifest: true,
+  // TARGETED precache only (S6, amending S4's full disable): the glob-based
+  // static manifest stays OFF — empty globPatterns plus precachePrerendered
+  // false defeat @serwist/next's defaults — so the precache layer still
+  // cannot shadow the versioned strix-* runtime caches. What ships instead is
+  // exactly ONE entry, the /~offline fallback screen, revisioned by the build
+  // ID so each deploy re-fetches it once. S4's `disablePrecacheManifest: true`
+  // had to go: @serwist/build short-circuits the whole manifest — INCLUDING
+  // additionalPrecacheEntries — when that flag is set. The @serwist/next
+  // default (disable in dev only) now applies, so dev builds keep S4's
+  // no-precache behavior; offline fallback is pinned against the prod build
+  // by e2e/offline.spec.ts.
+  globPatterns: [],
+  precachePrerendered: false,
+  additionalPrecacheEntries: [{ url: "/~offline", revision: buildId }],
   esbuildOptions: {
     define: {
-      "process.env.STRIX_BUILD_ID": JSON.stringify(resolveBuildId()),
+      "process.env.STRIX_BUILD_ID": JSON.stringify(buildId),
     },
   },
 });
