@@ -17,10 +17,18 @@
  *                   offline, fresh data lands when online. This named cache IS
  *                   the "last-loaded dashboard data" carve-out — no separate
  *                   JSON/IndexedDB store; S7's sign-out purge targets it by
- *                   enumerating caches.keys().
+ *                   enumerating caches.keys(). ONLY status-200 responses are
+ *                   admitted (security review L1): without the explicit
+ *                   CacheableResponsePlugin, Serwist's default plugin also
+ *                   admits status 0 (opaqueredirect), so a signed-out
+ *                   navigation's auth redirect would poison the cache and be
+ *                   served stale to the next signed-in user on the device.
  *   4. app shell   CacheFirst — /_next/static (JS/CSS chunks + next/font
- *                   assets), /icons/*, the manifest, and script/style/font
- *                   destinations.
+ *                   assets, which next/font serves under /_next/static/media),
+ *                   /icons/*, and the manifest. Explicit path prefixes ONLY —
+ *                   no script/style/font destination catch-all (security
+ *                   review L2: a destination catch-all would CacheFirst-pin
+ *                   same-origin assets at ANY path indefinitely).
  *
  * Cross-origin requests match nothing → network passthrough, never stored.
  *
@@ -31,7 +39,12 @@
  * This module is pure (no SW globals at module scope) so vitest can classify
  * requests through the real rule table in a node environment.
  */
-import { CacheFirst, NetworkOnly, StaleWhileRevalidate } from "serwist";
+import {
+  CacheFirst,
+  CacheableResponsePlugin,
+  NetworkOnly,
+  StaleWhileRevalidate,
+} from "serwist";
 import type { RuntimeCaching } from "serwist";
 
 /**
@@ -58,9 +71,6 @@ export type StrixRuleId =
 /** RuntimeCaching plus a stable id so tests can pin rule identity + order. */
 export type StrixRuntimeCaching = RuntimeCaching & { id: StrixRuleId };
 
-/** Same-origin destinations that are app shell wherever they live. */
-const SHELL_DESTINATIONS: readonly string[] = ["script", "style", "font"];
-
 export function getRuntimeCaching(buildId: string): StrixRuntimeCaching[] {
   const names = strixCacheNames(buildId);
   return [
@@ -80,16 +90,22 @@ export function getRuntimeCaching(buildId: string): StrixRuntimeCaching[] {
       id: "dashboard-swr",
       matcher: ({ url, sameOrigin }) =>
         sameOrigin && url.pathname === "/dashboard",
-      handler: new StaleWhileRevalidate({ cacheName: names.dashboard }),
+      handler: new StaleWhileRevalidate({
+        cacheName: names.dashboard,
+        // Only real dashboards enter the cache. Supplying a cacheWillUpdate
+        // plugin also displaces Serwist's default cacheOkAndOpaquePlugin,
+        // which would otherwise admit status-0 opaqueredirect responses
+        // (signed-out auth redirects) — security review L1.
+        plugins: [new CacheableResponsePlugin({ statuses: [200] })],
+      }),
     },
     {
       id: "app-shell-cache-first",
-      matcher: ({ url, request, sameOrigin }) =>
+      matcher: ({ url, sameOrigin }) =>
         sameOrigin &&
         (url.pathname.startsWith("/_next/static/") ||
           url.pathname.startsWith("/icons/") ||
-          url.pathname === "/manifest.webmanifest" ||
-          SHELL_DESTINATIONS.includes(request.destination)),
+          url.pathname === "/manifest.webmanifest"),
       handler: new CacheFirst({ cacheName: names.shell }),
     },
   ];

@@ -14,18 +14,23 @@
  *   1. /sw.js is actually served (200, JS content type).
  *   2. The registration in the root layout reaches "activated + controlling"
  *      (skipWaiting + clientsClaim) — registration is not silently disabled.
- *   3. Real traffic lands in the NAMED, build-versioned caches
- *      (strix-shell-*, strix-dashboard-*) that slice S7's purge will
- *      enumerate.
+ *   3. Real shell traffic lands in the NAMED, build-versioned strix-shell-*
+ *      cache that slice S7's purge will enumerate.
  *   4. After API traffic — including /api/ai/* — NO cache anywhere contains
  *      any /api/ entry. (A /manifest.webmanifest fetch is used as a write
  *      sentinel: once IT is cached, earlier cache writes have flushed, so the
- *      negative assertion is meaningful.)
- *
- * NOTE on /dashboard: it is auth-protected, so the unauthenticated harness
- * never sees its HTML — the spec only asserts the SWR rule CLAIMED the
- * request (the named cache appears; redirects are not cached). The offline
- * render itself is slice S6's surface.
+ *      negative assertions are meaningful.)
+ *   5. Signed-out /dashboard traffic caches NOTHING (security review L1).
+ *      /dashboard is auth-protected, so every response the unauthenticated
+ *      harness can produce is an auth redirect (status 0 opaqueredirect under
+ *      `redirect: "manual"`). Before the CacheableResponsePlugin fix, Serwist's
+ *      default plugin DID admit those status-0 redirects into
+ *      strix-dashboard-* — the cache-poisoning vector the review flagged. Now
+ *      only status-200 responses are admitted, so no strix-dashboard-* entry
+ *      may exist here at all (the cache is not even materialized — Serwist
+ *      opens it on first successful write). The positive SWR path (cache name,
+ *      strategy, 200-only admission) is pinned by the unit table; the offline
+ *      render itself is slice S6's surface.
  */
 import { test, expect, type Page } from "@playwright/test";
 
@@ -73,14 +78,14 @@ test("app-shell traffic lands in the versioned strix-shell cache", async ({
   });
 });
 
-test("dashboard visit creates its named cache; /api/ never appears in any cache", async ({
+test("signed-out dashboard traffic and /api/ traffic are never cached", async ({
   page,
 }) => {
   await gotoControlled(page);
   await page.evaluate(async () => {
-    // A dashboard visit (unauthenticated → redirect; `manual` avoids chasing
-    // the Clerk sign-in host, which is unreachable in CI). The SWR rule still
-    // claims the request and opens its named cache.
+    // A signed-out dashboard visit (unauthenticated → auth redirect; `manual`
+    // avoids chasing the Clerk sign-in host, which is unreachable in CI, and
+    // yields the status-0 opaqueredirect the L1 plugin must reject).
     await fetch("/dashboard", { redirect: "manual" }).catch(() => null);
     // API traffic, including the AI endpoints (POST is how they are really
     // called; a GET probes the matcher path too). All NetworkOnly.
@@ -91,14 +96,11 @@ test("dashboard visit creates its named cache; /api/ never appears in any cache"
     await fetch("/manifest.webmanifest").catch(() => null);
   });
 
-  // The named dashboard cache exists (S7 purge target), and the sentinel has
-  // been written — i.e. the cache layer demonstrably accepted writes in this
-  // window.
+  // Wait until the sentinel has been written — i.e. the cache layer
+  // demonstrably accepted writes in this window, so the negative assertions
+  // below cannot pass merely because writes were still in flight.
   await page.waitForFunction(async () => {
     const names = await caches.keys();
-    if (!names.some((name) => name.startsWith("strix-dashboard-"))) {
-      return false;
-    }
     const shell = names.find((name) => name.startsWith("strix-shell-"));
     if (!shell) return false;
     const keys = await (await caches.open(shell)).keys();
@@ -106,6 +108,22 @@ test("dashboard visit creates its named cache; /api/ never appears in any cache"
       (request) => new URL(request.url).pathname === "/manifest.webmanifest",
     );
   });
+
+  // Security review L1: the signed-out redirect must NOT have been cached —
+  // no strix-dashboard-* cache holds any entry (status 0 or otherwise).
+  const dashboardEntries = await page.evaluate(async () => {
+    const entries: Array<{ url: string; status: number | null }> = [];
+    for (const name of await caches.keys()) {
+      if (!name.startsWith("strix-dashboard-")) continue;
+      const cache = await caches.open(name);
+      for (const request of await cache.keys()) {
+        const response = await cache.match(request);
+        entries.push({ url: request.url, status: response?.status ?? null });
+      }
+    }
+    return entries;
+  });
+  expect(dashboardEntries).toEqual([]);
 
   // The negative guarantee: no cache, of any name, holds any /api/ entry.
   const apiEntries = await page.evaluate(async () => {

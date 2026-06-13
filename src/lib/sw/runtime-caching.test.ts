@@ -7,8 +7,14 @@
  * /api/ai/* fails here — the "AI responses are never cached or replayed"
  * guarantee is the load-bearing row.
  */
-import { describe, expect, it } from "vitest";
-import { CacheFirst, NetworkOnly, StaleWhileRevalidate } from "serwist";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  CacheFirst,
+  CacheableResponsePlugin,
+  NetworkOnly,
+  StaleWhileRevalidate,
+} from "serwist";
+import type { SerwistPlugin } from "serwist";
 
 import {
   STRIX_CACHE_PREFIX,
@@ -97,11 +103,20 @@ describe("getRuntimeCaching classification", () => {
     },
     { name: "PWA icon", url: "/icons/icon-192.png", expected: "app-shell-cache-first" },
     { name: "manifest", url: "/manifest.webmanifest", expected: "app-shell-cache-first" },
+    // -- shell rule is explicit path prefixes ONLY (security review L2): no
+    // destination catch-all, so same-origin assets outside those prefixes
+    // fall through to the network --
     {
-      name: "same-origin font outside /_next",
+      name: "same-origin font outside the shell prefixes",
       url: "/some/other/font.woff2",
       destination: "font",
-      expected: "app-shell-cache-first",
+      expected: null,
+    },
+    {
+      name: "same-origin script outside the shell prefixes",
+      url: "/some/other/widget.js",
+      destination: "script",
+      expected: null,
     },
     // -- everything else: no rule, network passthrough, nothing stored --
     { name: "goal detail page", url: "/goals/abc", expected: null },
@@ -149,6 +164,66 @@ describe("getRuntimeCaching classification", () => {
     const shell = rules.find((r) => r.id === "app-shell-cache-first")?.handler;
     expect(shell).toBeInstanceOf(CacheFirst);
     expect((shell as CacheFirst).cacheName).toBe(names.shell);
+  });
+
+  /**
+   * Security review L1: the dashboard cache must only ever admit status-200
+   * responses. Serwist's StaleWhileRevalidate unshifts a default plugin that
+   * ALSO admits status 0 (opaqueredirect — what a signed-out navigation's
+   * auth redirect produces under `redirect: "manual"`) whenever no
+   * cacheWillUpdate plugin is supplied; a cached redirect would then be
+   * served stale to the next signed-in user. Running the strategy's REAL
+   * plugin chain below means this test fails if the explicit plugin is
+   * removed (the permissive default would take its place and admit status 0).
+   */
+  describe("dashboard-swr response admission (security review L1)", () => {
+    // Serwist's dev-mode rejection path logs through `logger`, which is null
+    // in node (no `self` global) — run these as production, the mode the real
+    // service worker executes in; the admission decision is mode-independent.
+    beforeAll(() => vi.stubEnv("NODE_ENV", "production"));
+    afterAll(() => vi.unstubAllEnvs());
+
+    const handler = getRuntimeCaching(BUILD_ID).find(
+      (r) => r.id === "dashboard-swr",
+    )?.handler as StaleWhileRevalidate;
+
+    /** Run `response` through the strategy's cacheWillUpdate chain, exactly
+     * like StrategyHandler does before a cachePut: any plugin returning
+     * null/undefined vetoes the write. */
+    async function admitted(response: Response): Promise<boolean> {
+      let current: Response | null | undefined = response;
+      for (const plugin of handler.plugins as SerwistPlugin[]) {
+        if (!plugin.cacheWillUpdate || !current) break;
+        current = await plugin.cacheWillUpdate({
+          response: current,
+          request: new Request(`${ORIGIN}/dashboard`),
+        } as Parameters<NonNullable<SerwistPlugin["cacheWillUpdate"]>>[0]);
+      }
+      return current != null;
+    }
+
+    it("carries an explicit CacheableResponsePlugin (statuses: [200])", () => {
+      expect(
+        handler.plugins.some((p) => p instanceof CacheableResponsePlugin),
+      ).toBe(true);
+    });
+
+    it("admits a 200 response", async () => {
+      expect(await admitted(new Response("dashboard", { status: 200 }))).toBe(
+        true,
+      );
+    });
+
+    it("rejects status 0 (opaqueredirect-class network responses)", async () => {
+      expect(Response.error().status).toBe(0); // probe really is status 0
+      expect(await admitted(Response.error())).toBe(false);
+    });
+
+    it("rejects redirects and errors", async () => {
+      expect(await admitted(new Response(null, { status: 302 }))).toBe(false);
+      expect(await admitted(new Response(null, { status: 404 }))).toBe(false);
+      expect(await admitted(new Response(null, { status: 500 }))).toBe(false);
+    });
   });
 });
 
