@@ -237,9 +237,7 @@ src/
 │   │               └── save-goal.ts # "Save goal": one transaction, draft → rows
 │   ├── (settings)/settings/
 │   │   ├── page.tsx                 # /settings — account section (first sign-out UI)
-│   │   ├── sign-out-button.tsx      # purge AWAITED, then signOut() redirects (S7)
-│   │   ├── session-watch.tsx        # best-effort expiry/revocation purge watcher
-│   │   └── session-watch-model.ts   # pure signed-in→out transition machine
+│   │   └── sign-out-button.tsx      # purge AWAITED, then signOut() redirects (S7)
 │   ├── ~offline/page.tsx            # offline fallback screen (SW-precached, served
 │   │                                #   for any document request that fails offline)
 │   ├── globals.css                  # goal-color palette CSS vars + shadcn tokens
@@ -256,6 +254,8 @@ src/
 │   ├── emblem.tsx                   # the Strix owl mark (flat geometric, no face)
 │   ├── goal-chip.tsx                # goal dot + name (color never the sole carrier)
 │   ├── install-banner.tsx           # dismissible "add to home screen" affordance (S8)
+│   ├── session-watch.tsx            # app-wide expiry/revocation purge watcher (S7/CS-4)
+│   ├── session-watch-model.ts       # pure signed-in→out transition machine
 │   ├── upgrade-modal.tsx            # free-cap dialog (no upgrade CTA until Phase 3)
 │   ├── countdown-stat.tsx           # tabular number + label primitive
 │   └── empty-dashboard.tsx          # empty-state composition (pre-dawn scene + CTA + tiles)
