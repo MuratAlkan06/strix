@@ -387,8 +387,12 @@ function ReviewSurface({
           </p>
         </section>
       ) : (
+        // sticky commit bar — pb-safe-plus-3 keeps the prior py-3 bottom
+        // padding off-device (env() = 0) and adds the home-indicator reserve
+        // under a real inset when the bar pins to the viewport bottom in iOS
+        // standalone (phase 2.5 S9). pt-3 preserves the top padding.
         interactive && (
-          <div className="sticky bottom-0 -mx-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+          <div className="sticky bottom-0 -mx-4 border-t border-border bg-background/95 px-4 pt-3 pb-safe-plus-3 backdrop-blur sm:-mx-6 sm:px-6">
             <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3">
               <p aria-live="polite" className="text-sm text-muted-foreground">
                 {acceptedCount} accepted · {rejectedCount} rejected

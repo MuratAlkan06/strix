@@ -264,6 +264,8 @@ src/
 │   ├── goal-scene.ts                # activity_type → Scene variant (completion moment)
 │   ├── goal-seeds.ts                # empty-state tiles + the {climb,…} seed whitelist
 │   ├── install-platform.ts          # pure install-banner platform/eligibility decisions (S8)
+│   ├── ios-splash.ts                # iOS launch-screen device table (layout links +
+│   │                                #   scripts/generate-splash.mts share it)
 │   ├── limits.ts                    # free-tier usage caps (SPEC §10)
 │   ├── use-local-storage.ts         # install-banner client store: per-user session count +
 │   │                                #   dismissed flag (the only localStorage Strix keeps) (S8)
