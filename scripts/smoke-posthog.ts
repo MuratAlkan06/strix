@@ -29,7 +29,11 @@ async function main() {
     process.exit(1);
   }
   console.log(`Host: ${process.env.POSTHOG_HOST ?? "https://us.i.posthog.com"}`);
-  console.log(`Key:  ${process.env.POSTHOG_API_KEY.slice(0, 8)}… (project key)`);
+  // POSTHOG_API_KEY is the server-side personal API key (phx_…), used by
+  // posthog-node here. NEXT_PUBLIC_POSTHOG_KEY is the phc_ project token (client).
+  console.log(
+    `Key:  ${process.env.POSTHOG_API_KEY.slice(0, 8)}… (personal API key)`,
+  );
   console.log(`Distinct ID: ${DISTINCT_ID}`);
   console.log(`Event name:  ${EVENT_NAME}\n`);
 
