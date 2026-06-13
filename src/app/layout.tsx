@@ -3,6 +3,7 @@ import { Fraunces, Hanken_Grotesk, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { SerwistProvider } from "@serwist/next/react";
 import { MotionProvider } from "@/components/motion-provider";
+import { SessionWatch } from "@/components/session-watch";
 import { SPLASH_STARTUP_IMAGES } from "@/lib/ios-splash";
 import "./globals.css";
 
@@ -127,6 +128,11 @@ export default function RootLayout({
               reducedMotion="user" once at the root (DESIGN.md §7); it is a client
               component so the root layout stays a server component. */}
           <ClerkProvider>
+            {/* SessionWatch (S7, mounted app-wide per ADR-0002 CS-4): renders
+                nothing; needs useAuth() so it lives inside ClerkProvider. Fires
+                the shared-device cache purge on a session-end auth flip from any
+                surface, not just /settings. */}
+            <SessionWatch />
             <MotionProvider>{children}</MotionProvider>
           </ClerkProvider>
         </SerwistProvider>

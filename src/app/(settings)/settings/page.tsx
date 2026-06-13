@@ -13,7 +13,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { SessionWatch } from "./session-watch";
 import { SignOutButton } from "./sign-out-button";
 
 export const dynamic = "force-dynamic";
@@ -43,10 +42,6 @@ export default function SettingsPage() {
           <SignOutButton />
         </CardContent>
       </Card>
-
-      {/* Best-effort expiry/revocation purge — see session-watch.tsx for the
-          coverage limit while mounted only on this page. */}
-      <SessionWatch />
     </main>
   );
 }
