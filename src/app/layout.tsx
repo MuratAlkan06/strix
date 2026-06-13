@@ -3,6 +3,7 @@ import { Fraunces, Hanken_Grotesk, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { SerwistProvider } from "@serwist/next/react";
 import { MotionProvider } from "@/components/motion-provider";
+import { SPLASH_STARTUP_IMAGES } from "@/lib/ios-splash";
 import "./globals.css";
 
 // DAWN brand faces, loaded app-wide (DESIGN.md §3). Fraunces = display/headings,
@@ -44,6 +45,16 @@ export const metadata: Metadata = {
     capable: true,
     title: "Strix",
     statusBarStyle: "black-translucent",
+    // iOS launch screens (phase 2.5 S9). Real images built by
+    // scripts/generate-splash.mjs from the V6a brand mark on the dusk ground —
+    // a pragmatic iPhone 8/X/12/14/15-family set (not exhaustive). Each entry's
+    // media query is portrait-only (the manifest pins orientation:"portrait")
+    // and matches on device-width/height × -webkit-device-pixel-ratio so iOS
+    // picks the file authored for that exact logical resolution; a mismatch
+    // means iOS shows a blank/letterboxed launch. Filenames carry the PHYSICAL
+    // pixel dimensions the splash script emits. See the script header for the
+    // device→resolution table this list mirrors.
+    startupImage: SPLASH_STARTUP_IMAGES,
   },
   icons: {
     apple: [
@@ -92,7 +103,15 @@ export default function RootLayout({
       lang="en"
       className={`${fraunces.variable} ${hanken.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      {/* Safe-area insets (phase 2.5 S9): pt/pb/pl/pr-safe reserve the notch /
+          dynamic-island / home-indicator / landscape-cutout space app-wide, so
+          no route slides content under a cutout in iOS standalone. env() is 0
+          off-device (desktop, the verify:ui headless browser, Android without a
+          cutout) → these add nothing there and shift no baselines; they only
+          expand under a real inset. Full-bleed surfaces that must paint to the
+          very edge (the HorizonHeader scene) handle their own inset internally
+          rather than inheriting this padding. */}
+      <body className="min-h-full flex flex-col pt-safe pr-safe pb-safe pl-safe">
         {/* SerwistProvider registers the service worker (public/sw.js, built by
             `serwist build` — see serwist.config.mjs) in dev AND prod, per the
             phase-2.5 planning doc. Client component; keeps this layout a
