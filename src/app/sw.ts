@@ -6,11 +6,18 @@
  *
  * All caching policy lives in src/lib/sw/runtime-caching.ts (pure + unit
  * tested). This file only wires it to the SW lifecycle:
- *   - precacheEntries stays plumbed but EMPTY in S4 (the static manifest is
- *     disabled in serwist.config.mjs so precache cannot shadow the versioned
- *     strix-* runtime caches). S6 adds its offline-fallback entries — and a
- *     `fallbacks` option on the Serwist instance below — without touching the
- *     runtime rules.
+ *   - precacheEntries carries S6's TARGETED manifest: exactly one entry, the
+ *     /~offline screen (additionalPrecacheEntries in serwist.config.mjs,
+ *     revision = the build ID). The full static manifest stays off, so the
+ *     precache still cannot shadow the versioned strix-* runtime caches. In
+ *     dev the manifest is disabled entirely (the @serwist/next default) —
+ *     offline fallback is a prod-build behavior, pinned by e2e/offline.spec.ts.
+ *   - `fallbacks` serves that precached /~offline whenever a document
+ *     strategy errors (offline navigation, or /dashboard with an empty
+ *     cache). S4 hoped fallbacks alone would suffice "without touching the
+ *     runtime rules", but Serwist only attaches the fallback plugin to
+ *     runtime-caching strategies — so S6 added the pages-offline-fallback
+ *     NetworkOnly rule (stores nothing) at the END of the rule table.
  *   - the activate hook evicts strix-* caches from older builds; the embedded
  *     STRIX_BUILD_ID constant is defined at `serwist build` time from
  *     .next/BUILD_ID (see serwist.config.mjs).
@@ -20,6 +27,7 @@ import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 
 import {
   deleteStaleStrixCaches,
+  getFallbackEntries,
   getRuntimeCaching,
 } from "../lib/sw/runtime-caching";
 
@@ -45,6 +53,11 @@ const serwist = new Serwist({
   navigationPreload: false,
   disableDevLogs: true,
   runtimeCaching: getRuntimeCaching(BUILD_ID),
+  // Offline document fallback (S6): Serwist pushes a handlerDidError plugin
+  // carrying these entries onto every runtime strategy above, so a failed
+  // document fetch answers with the precached /~offline instead of the
+  // browser's network-error page.
+  fallbacks: { entries: getFallbackEntries() },
 });
 
 self.addEventListener("activate", (event) => {

@@ -34,6 +34,15 @@
  * Check-off is optimistic: strike immediately, insert via the server action,
  * roll back with a calm constant line on failure. An already-done result
  * (unique-constraint no-op) keeps the row checked.
+ *
+ * Offline (phase 2.5 slice S6, planning doc "Offline dashboard shell"): the
+ * service worker serves this surface from the strix-dashboard-* SWR cache,
+ * so it must stay honest without a network. useOnline drives two changes —
+ * a quiet "Offline" line under the header, and the check-off control
+ * rendered visibly disabled (aria-disabled, dimmed, tooltip "Reconnects
+ * when you're online."). No queued mutations in MVP: offline check-off is
+ * simply not offered. ONLINE rendering is byte-identical to pre-S6 — the
+ * verify:ui baselines must not shift.
  */
 import { useState } from "react";
 import Link from "next/link";
@@ -43,6 +52,7 @@ import {
   ChevronRight,
   CircleAlert,
   Package,
+  WifiOff,
 } from "lucide-react";
 
 import {
@@ -52,10 +62,17 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CountdownStat } from "@/components/countdown-stat";
 import { GoalChip } from "@/components/goal-chip";
 import { HorizonHeader } from "@/components/horizon-header";
 import { formatDate } from "@/lib/format";
+import { useOnline } from "@/lib/use-online";
 import { cn } from "@/lib/utils";
 import {
   dayUnit,
@@ -114,6 +131,7 @@ function TaskRow({
   row,
   checkable,
   checked,
+  offline,
   onCheck,
   rightLabel,
 }: {
@@ -121,28 +139,65 @@ function TaskRow({
   /** Only TODAY tasks are checkable — a future weekly session is not. */
   checkable: boolean;
   checked: boolean;
+  /** Offline (S6): check-off is visibly disabled, with the tooltip below. */
+  offline: boolean;
   onCheck: (row: TaskRowModel) => void;
   /** This-week rows show their weekday on the right. */
   rightLabel?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = `task-details-${row.id}`;
+  const offlineHintId = `offline-hint-${row.id}`;
   return (
     <li className="flex flex-col">
       <div className="flex min-h-11 items-center gap-3 rounded-lg px-2 py-1.5">
-        {checkable && (
-          // size-5 glyph; the after:* hit area extends it to a 44×44 effective
-          // target (20px + 2×12px). Checked = glyph + strikethrough, never
-          // color alone. Phase 1 is check-only: un-check attempts are no-ops.
-          <Checkbox
-            checked={checked}
-            onCheckedChange={(v) => {
-              if (v === true && !checked) onCheck(row);
-            }}
-            aria-label={`Mark done: ${row.title}`}
-            className="size-5 cursor-pointer after:-inset-3 [&_svg]:size-4"
-          />
-        )}
+        {checkable &&
+          (offline ? (
+            // Offline: same glyph, visibly disabled. aria-disabled — NOT the
+            // native disabled attribute — keeps the control hoverable and
+            // focusable so the tooltip can explain itself. The visible Base UI
+            // tooltip only renders on hover/focus from a portal, so it can't be
+            // a reliable accessible description; instead the control carries
+            // aria-describedby pointing at an always-present sr-only node with
+            // the same copy, so AT users hear both the state and the
+            // description regardless of tooltip open-state. It stays inert
+            // because the checkbox is controlled and no onCheckedChange is
+            // wired.
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Checkbox
+                      checked={checked}
+                      aria-disabled
+                      aria-label={`Mark done: ${row.title}`}
+                      aria-describedby={offlineHintId}
+                      className="size-5 cursor-not-allowed opacity-50 after:-inset-3 [&_svg]:size-4"
+                    />
+                  }
+                />
+                <span id={offlineHintId} className="sr-only">
+                  Reconnects when you&rsquo;re online.
+                </span>
+                <TooltipContent>
+                  Reconnects when you&rsquo;re online.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            // size-5 glyph; the after:* hit area extends it to a 44×44
+            // effective target (20px + 2×12px). Checked = glyph +
+            // strikethrough, never color alone. Phase 1 is check-only:
+            // un-check attempts are no-ops.
+            <Checkbox
+              checked={checked}
+              onCheckedChange={(v) => {
+                if (v === true && !checked) onCheck(row);
+              }}
+              aria-label={`Mark done: ${row.title}`}
+              className="size-5 cursor-pointer after:-inset-3 [&_svg]:size-4"
+            />
+          ))}
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
@@ -373,11 +428,17 @@ export function ActiveDashboard({
   // rolled back on a failed action. Keyed by recurring task id.
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  // Offline state (S6): SSR-safe, flips with the window online/offline
+  // events — e.g. the moment airplane mode toggles on a cached render.
+  const online = useOnline();
 
   const isChecked = (row: TaskRowModel) =>
     overrides[row.id] ?? row.completedToday;
 
   async function handleCheck(row: TaskRowModel) {
+    // Offline rows never wire onCheck, but belt-and-braces: a check-off
+    // attempted without a network would only fail slower.
+    if (!online) return;
     setError(null);
     setOverrides((o) => ({ ...o, [row.id]: true }));
     let result: CompleteTaskResult;
@@ -408,6 +469,7 @@ export function ActiveDashboard({
         row={row}
         checkable={checkable}
         checked={isChecked(row)}
+        offline={!online}
         onCheck={handleCheck}
         rightLabel={
           !checkable && row.weekday !== null
@@ -422,6 +484,28 @@ export function ActiveDashboard({
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-4 sm:gap-5 sm:p-5">
       <HorizonHeader greeting={greeting} date={dateLabel} state="dawn" />
+
+      {/* Offline (S6): one quiet, factual line at the top of content — muted,
+          icon-paired, never amber (§8 reserves the warning tone for cap hit /
+          overdue; being offline is a state, not a fault). The element is
+          PERSISTENT (like the error status line below) so the live region
+          reliably announces the transition; online it is sr-only and empty —
+          sr-only is absolutely positioned, so the online layout (and the
+          verify:ui baselines) are untouched. */}
+      <p
+        role="status"
+        className={cn(
+          "flex items-center gap-1.5 text-xs text-muted-foreground",
+          online && "sr-only",
+        )}
+      >
+        {!online && (
+          <>
+            <WifiOff aria-hidden="true" className="size-3.5 shrink-0" />
+            Offline
+          </>
+        )}
+      </p>
 
       {/* Friday/Saturday check-in invitation — gone once the week has a row. */}
       {showCheckInPrompt && <CheckInPromptBanner />}

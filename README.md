@@ -216,6 +216,8 @@ src/
 │   │   ├── sign-out-button.tsx      # purge AWAITED, then signOut() redirects (S7)
 │   │   ├── session-watch.tsx        # best-effort expiry/revocation purge watcher
 │   │   └── session-watch-model.ts   # pure signed-in→out transition machine
+│   ├── ~offline/page.tsx            # offline fallback screen (SW-precached, served
+│   │                                #   for any document request that fails offline)
 │   ├── globals.css                  # goal-color palette CSS vars + shadcn tokens
 │   ├── page.tsx                     # public landing; redirects signed-in → /dashboard
 │   ├── sw.ts                        # service-worker entry — `serwist build` → public/sw.js
@@ -262,7 +264,7 @@ src/
 │   ├── goal-seeds.ts                # empty-state tiles + the {climb,…} seed whitelist
 │   ├── limits.ts                    # free-tier usage caps (SPEC §10)
 │   ├── sw/runtime-caching.ts        # SW caching rules — versioned strix-* caches;
-│   │                                #   /api/ai/* pinned never-cached
+│   │                                #   /api/ai/* pinned never-cached; /~offline fallback
 │   ├── sw/purge.ts                  # session-end full Cache Storage purge (S7)
 │   └── utils.ts                     # shadcn cn() helper
 └── proxy.ts                         # clerkMiddleware + public-route whitelist
