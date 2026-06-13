@@ -96,8 +96,14 @@ export default function RootLayout({
         {/* SerwistProvider registers the service worker (public/sw.js, built by
             `serwist build` — see serwist.config.mjs) in dev AND prod, per the
             phase-2.5 planning doc. Client component; keeps this layout a
-            server component, same as the providers below. */}
-        <SerwistProvider swUrl="/sw.js">
+            server component, same as the providers below.
+            reloadOnOnline={false} (S6, security review L5): the provider's
+            default calls location.reload() the moment connectivity returns,
+            which would discard in-memory state — mid-conversation AI-intake
+            chat on /goals/new, unsaved check-in text. Freshness comes from
+            the dashboard's StaleWhileRevalidate cache + the useOnline-driven
+            offline UI instead; nothing needs a forced reload. */}
+        <SerwistProvider swUrl="/sw.js" reloadOnOnline={false}>
           {/* MotionProvider sets up LazyMotion(domAnimation, strict) + MotionConfig
               reducedMotion="user" once at the root (DESIGN.md §7); it is a client
               component so the root layout stays a server component. */}

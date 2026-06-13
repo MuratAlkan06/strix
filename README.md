@@ -212,6 +212,8 @@ src/
 │   │               ├── review-plan.ts # pure review/edit + color/deadline rules
 │   │               └── save-goal.ts # "Save goal": one transaction, draft → rows
 │   ├── (settings)/settings/page.tsx # placeholder shell
+│   ├── ~offline/page.tsx            # offline fallback screen (SW-precached, served
+│   │                                #   for any document request that fails offline)
 │   ├── globals.css                  # goal-color palette CSS vars + shadcn tokens
 │   ├── page.tsx                     # public landing; redirects signed-in → /dashboard
 │   ├── sw.ts                        # service-worker entry — `serwist build` → public/sw.js
@@ -258,7 +260,7 @@ src/
 │   ├── goal-seeds.ts                # empty-state tiles + the {climb,…} seed whitelist
 │   ├── limits.ts                    # free-tier usage caps (SPEC §10)
 │   ├── sw/runtime-caching.ts        # SW caching rules — versioned strix-* caches;
-│   │                                #   /api/ai/* pinned never-cached
+│   │                                #   /api/ai/* pinned never-cached; /~offline fallback
 │   └── utils.ts                     # shadcn cn() helper
 └── proxy.ts                         # clerkMiddleware + public-route whitelist
                                      # (Next 16 renamed middleware.ts → proxy.ts)

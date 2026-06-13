@@ -15,6 +15,11 @@ const isPublicRoute = createRouteMatcher([
   // Throwaway DAWN design-curation route — must be reachable without auth so it
   // can be captured/reviewed. Removed when the playground is torn down post-mint.
   "/playground(.*)",
+  // The offline fallback screen (phase 2.5 S6) — static, no user data. The
+  // service worker precaches it at install time; that fetch must receive the
+  // page itself, never an auth redirect (a redirect would poison the precache
+  // and break every offline fallback).
+  "/~offline",
 ]);
 
 // /goals/new and its draft-bootstrap Route Handler both accept ?seed= — the

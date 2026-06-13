@@ -17,8 +17,10 @@ import {
 import type { SerwistPlugin } from "serwist";
 
 import {
+  OFFLINE_FALLBACK_URL,
   STRIX_CACHE_PREFIX,
   deleteStaleStrixCaches,
+  getFallbackEntries,
   getRuntimeCaching,
   strixCacheNames,
   type StrixRuleId,
@@ -118,13 +120,48 @@ describe("getRuntimeCaching classification", () => {
       destination: "script",
       expected: null,
     },
-    // -- everything else: no rule, network passthrough, nothing stored --
-    { name: "goal detail page", url: "/goals/abc", expected: null },
-    { name: "landing page", url: "/", expected: null },
+    // -- document navigations to every OTHER route (S6): the offline-fallback
+    // rule — NetworkOnly passthrough online, the precached /~offline screen
+    // when the fetch fails offline --
+    {
+      name: "goal detail navigation",
+      url: "/goals/abc",
+      destination: "document",
+      expected: "pages-offline-fallback",
+    },
+    {
+      name: "settings navigation",
+      url: "/settings",
+      destination: "document",
+      expected: "pages-offline-fallback",
+    },
+    {
+      name: "landing navigation",
+      url: "/",
+      destination: "document",
+      expected: "pages-offline-fallback",
+    },
+    {
+      name: "direct /~offline navigation (runtime table view — the precache route answers first in the real SW)",
+      url: OFFLINE_FALLBACK_URL,
+      destination: "document",
+      expected: "pages-offline-fallback",
+    },
+    // -- non-document fetches to those same routes: STILL no rule — the S6
+    // pages rule must not widen beyond navigations (RSC payloads, arbitrary
+    // same-origin fetches keep S4's passthrough-never-stored posture) --
+    { name: "goal detail page (non-document fetch)", url: "/goals/abc", expected: null },
+    { name: "landing page (non-document fetch)", url: "/", expected: null },
     {
       name: "cross-origin script (Clerk CDN)",
       url: "https://clerk.example.com/npm/clerk.browser.js",
       destination: "script",
+      expected: null,
+    },
+    {
+      name: "cross-origin document",
+      url: "https://elsewhere.example.com/page",
+      destination: "document",
       expected: null,
     },
     {
@@ -147,9 +184,18 @@ describe("getRuntimeCaching classification", () => {
     );
   });
 
-  it("uses NetworkOnly (no storage) for both API rules", () => {
+  it("orders the pages-offline-fallback rule LAST (S6) — /dashboard documents must keep their SWR rule", () => {
+    const ids = getRuntimeCaching(BUILD_ID).map((rule) => rule.id);
+    expect(ids.indexOf("pages-offline-fallback")).toBe(ids.length - 1);
+  });
+
+  it("uses NetworkOnly (no storage) for both API rules and the pages rule", () => {
     const rules = getRuntimeCaching(BUILD_ID);
-    for (const id of ["ai-never-cached", "api-network-only"] as const) {
+    for (const id of [
+      "ai-never-cached",
+      "api-network-only",
+      "pages-offline-fallback",
+    ] as const) {
       const rule = rules.find((r) => r.id === id);
       expect(rule?.handler).toBeInstanceOf(NetworkOnly);
     }
@@ -224,6 +270,33 @@ describe("getRuntimeCaching classification", () => {
       expect(await admitted(new Response(null, { status: 404 }))).toBe(false);
       expect(await admitted(new Response(null, { status: 500 }))).toBe(false);
     });
+  });
+});
+
+/**
+ * S6: the fallback entries the Serwist constructor distributes to every
+ * runtime strategy as a handlerDidError plugin. The matcher decides WHICH
+ * failed requests get the offline screen — documents only, so a failed API
+ * or asset fetch surfaces its real error instead of ghost HTML.
+ */
+describe("getFallbackEntries (offline fallback, S6)", () => {
+  const entries = getFallbackEntries();
+  const entry = entries[0];
+
+  it("serves the precached offline screen URL", () => {
+    expect(entries).toHaveLength(1);
+    expect(entry?.url).toBe(OFFLINE_FALLBACK_URL);
+    expect(OFFLINE_FALLBACK_URL).toBe("/~offline");
+  });
+
+  it("matches failed DOCUMENT requests only", () => {
+    const matcher = entry?.matcher as (opts: {
+      request: { destination: RequestDestination };
+    }) => boolean;
+    expect(matcher({ request: { destination: "document" } })).toBe(true);
+    for (const destination of ["", "script", "style", "font", "image"] as const) {
+      expect(matcher({ request: { destination } })).toBe(false);
+    }
   });
 });
 

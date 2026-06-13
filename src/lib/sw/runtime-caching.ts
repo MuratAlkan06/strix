@@ -29,6 +29,19 @@
  *                   no script/style/font destination catch-all (security
  *                   review L2: a destination catch-all would CacheFirst-pin
  *                   same-origin assets at ANY path indefinitely).
+ *   5. pages       NetworkOnly + offline fallback (phase 2.5, S6) — every
+ *                   OTHER same-origin document request. Stores NOTHING (the
+ *                   spec's "no offline mutations / no other route caching"
+ *                   stands); the rule exists because Serwist's `fallbacks`
+ *                   option only attaches its handlerDidError plugin to
+ *                   runtime-caching strategies — a request no rule matches
+ *                   never enters a strategy, so it could never fall back to
+ *                   the precached /~offline screen. Online this rule is a
+ *                   pure passthrough; offline the failed fetch triggers the
+ *                   fallback (getFallbackEntries below). LAST on purpose:
+ *                   /dashboard documents keep their SWR rule (3), so a
+ *                   cached dashboard still renders offline, and an
+ *                   empty-cache /dashboard falls back to /~offline too.
  *
  * Cross-origin requests match nothing → network passthrough, never stored.
  *
@@ -45,7 +58,19 @@ import {
   NetworkOnly,
   StaleWhileRevalidate,
 } from "serwist";
-import type { RuntimeCaching } from "serwist";
+// PrecacheFallbackEntry is the exported name of the `fallbacks.entries`
+// element type (Serwist's own FallbackEntry alias is not exported).
+import type { PrecacheFallbackEntry, RuntimeCaching } from "serwist";
+
+/**
+ * The offline fallback document (phase 2.5, S6). Precached by
+ * serwist.config.mjs (`additionalPrecacheEntries`, revision = the build ID)
+ * and served by the fallback plugin whenever a document strategy errors —
+ * i.e. the device is offline and the runtime caches cannot answer. The route
+ * is Clerk-public (src/proxy.ts): the precache install fetch must receive
+ * the page itself, never an auth redirect.
+ */
+export const OFFLINE_FALLBACK_URL = "/~offline";
 
 /**
  * Common prefix of every runtime cache this app owns. S7's session-end purge
@@ -66,7 +91,8 @@ export type StrixRuleId =
   | "ai-never-cached"
   | "api-network-only"
   | "dashboard-swr"
-  | "app-shell-cache-first";
+  | "app-shell-cache-first"
+  | "pages-offline-fallback";
 
 /** RuntimeCaching plus a stable id so tests can pin rule identity + order. */
 export type StrixRuntimeCaching = RuntimeCaching & { id: StrixRuleId };
@@ -107,6 +133,36 @@ export function getRuntimeCaching(buildId: string): StrixRuntimeCaching[] {
           url.pathname.startsWith("/icons/") ||
           url.pathname === "/manifest.webmanifest"),
       handler: new CacheFirst({ cacheName: names.shell }),
+    },
+    {
+      id: "pages-offline-fallback",
+      // Documents only (full navigations). RSC payload fetches report
+      // destination "" and stay unmatched — offline client-side navigation
+      // failures degrade to Next's own hard-navigation retry, which IS a
+      // document request and lands here.
+      matcher: ({ request, sameOrigin }) =>
+        sameOrigin && request.destination === "document",
+      // Stores nothing. The strategy exists to FAIL offline so the fallback
+      // plugin (attached by the Serwist constructor from getFallbackEntries)
+      // can answer with the precached /~offline.
+      handler: new NetworkOnly(),
+    },
+  ];
+}
+
+/**
+ * `fallbacks.entries` for the Serwist instance (sw.ts): when any runtime
+ * strategy above errors on a DOCUMENT request — offline navigation to an
+ * uncached route, or to /dashboard with an empty cache (the signed-out /
+ * post-purge device) — serve the precached offline screen instead. Non-
+ * document failures (API fetches, assets) propagate untouched: an AI or API
+ * call must surface its real error, never a ghost HTML response.
+ */
+export function getFallbackEntries(): PrecacheFallbackEntry[] {
+  return [
+    {
+      url: OFFLINE_FALLBACK_URL,
+      matcher: ({ request }) => request.destination === "document",
     },
   ];
 }

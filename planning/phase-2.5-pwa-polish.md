@@ -24,7 +24,7 @@
 - Use Workbox via `@serwist/next` (or `next-pwa` if simpler) — pick whichever is currently best-supported with Next.js 15 App Router at build time. (Chosen: `@serwist/next` in **configurator mode** — the repo is Next 16, which builds with Turbopack, and the classic webpack-plugin mode does not support Turbopack. `serwist build serwist.config.mjs` compiles `src/app/sw.ts` → `public/sw.js` after `next build`; registration via `<SerwistProvider>` in the root layout.)
 - Strategy:
   - **App shell** (JS/CSS chunks, fonts): `CacheFirst`.
-  - **Dashboard route HTML**: `StaleWhileRevalidate` so the user sees yesterday's dashboard instantly offline, then fresh data lands when online. (Implemented for the route HTML AND its RSC payloads — same pathname — in the named `strix-dashboard-<build>` cache.)
+  - **Dashboard route HTML**: `StaleWhileRevalidate` so the user sees yesterday's dashboard instantly offline, then fresh data lands when online. (Implemented for the route HTML AND its RSC payloads — same pathname — in the named `strix-dashboard-<build>` cache. S6 amendment: "fresh data lands when online" happens via SWR revalidation on the next navigation, NOT a forced reload — `<SerwistProvider reloadOnOnline={false}>`, because the provider's default `location.reload()` on reconnect would discard in-memory state such as a mid-conversation AI intake on `/goals/new`.)
   - **API routes**: `NetworkOnly`. No offline mutations in MVP — show a clear "offline" state on the check-off action; queue is v2 territory.
   - **AI endpoints**: `NetworkOnly` and excluded from any cache. AI responses must never be replayed.
 - Versioning: cache name includes a build hash so old caches are evicted on deploy. (Implemented: `strix-shell-<BUILD_ID>` / `strix-dashboard-<BUILD_ID>` from `.next/BUILD_ID`; an activate-time hook in `sw.ts` deletes `strix-*` caches from other builds.)
@@ -48,9 +48,9 @@
 
 ### Offline dashboard shell
 
-- Service worker pre-caches `/dashboard` shell and last-loaded JSON for today's tasks.
-- When offline: dashboard renders with cached data + a subtle "Offline" indicator. Check-off button visibly disabled with tooltip "Reconnects when you're online."
-- All other routes (goal detail, new goal, equipment, settings) show a polite offline screen — no crash, no half-broken UI.
+- Service worker pre-caches `/dashboard` shell and last-loaded JSON for today's tasks. (Shipped across S4+S6: the `strix-dashboard-<build>` StaleWhileRevalidate cache IS the shell-plus-data store — see "Service worker" above. S6's actual *pre*cache is targeted at exactly one URL, the `/~offline` fallback screen, revisioned by the build ID via `additionalPrecacheEntries`; the full static manifest stays off so precache can never shadow the versioned runtime caches.)
+- When offline: dashboard renders with cached data + a subtle "Offline" indicator. Check-off button visibly disabled with tooltip "Reconnects when you're online." (Implemented in S6: an SSR-safe `useOnline` hook — `navigator.onLine` + the window online/offline events — drives a quiet `role="status"` line under the header and an `aria-disabled`, dimmed check-off carrying that exact tooltip. No queued mutations; check-off simply isn't offered offline.)
+- All other routes (goal detail, new goal, equipment, settings) show a polite offline screen — no crash, no half-broken UI. (Implemented in S6 via Serwist `fallbacks` plus a last-position NetworkOnly document rule in the runtime table — Serwist only attaches its fallback plugin to runtime strategies, so unmatched documents needed a rule to fail through. Any same-origin document request that fails offline gets the precached `/~offline`, including `/dashboard` itself when its cache is empty (the signed-out / post-purge device). The route is Clerk-public so the precache install fetch never receives an auth redirect. Pinned by `e2e/offline.spec.ts`.)
 
 ### Lighthouse / install audit
 
@@ -105,4 +105,4 @@ Automated:
 
 - Build emits a valid manifest (validated against the W3C manifest spec).
 - Service worker registers cleanly in dev and prod builds. (Dev: `pnpm dev` one-shot-builds the worker before `next dev`, registration stays enabled — no dev-disable. Prod: pinned by e2e/service-worker.spec.ts against the verify:ui prod server.)
-- Playwright headless run of the dashboard offline (mocked offline) renders the shell without errors.
+- Playwright headless run of the dashboard offline (mocked offline) renders the shell without errors. (e2e/offline.spec.ts, in `verify:ui`: the offline dashboard renders from the SWR cache hydrated with zero page errors, indicator visible, check-off disabled with the tooltip; uncached routes and the empty-cache `/dashboard` get the precached `/~offline`.)
