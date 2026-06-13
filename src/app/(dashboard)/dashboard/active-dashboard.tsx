@@ -71,6 +71,7 @@ import {
 import { CountdownStat } from "@/components/countdown-stat";
 import { GoalChip } from "@/components/goal-chip";
 import { HorizonHeader } from "@/components/horizon-header";
+import { InstallBanner } from "@/components/install-banner";
 import { formatDate } from "@/lib/format";
 import { useOnline } from "@/lib/use-online";
 import { cn } from "@/lib/utils";
@@ -412,6 +413,9 @@ export interface ActiveDashboardProps {
   accomplished: readonly AccomplishedCardModel[];
   /** shouldShowCheckInPrompt(today, this week's rows) — the Fri/Sat banner. */
   showCheckInPrompt: boolean;
+  /** Server-known half of the S8 install-banner gate: ≥1 active goal. The
+   *  session-count half + platform branch are resolved client-side. */
+  hasActiveGoal: boolean;
   onComplete: CompleteTaskHandler;
 }
 
@@ -422,6 +426,7 @@ export function ActiveDashboard({
   model,
   accomplished,
   showCheckInPrompt,
+  hasActiveGoal,
   onComplete,
 }: ActiveDashboardProps) {
   // Optimistic check state layered over the server-derived completed flags;
@@ -509,6 +514,12 @@ export function ActiveDashboard({
 
       {/* Friday/Saturday check-in invitation — gone once the week has a row. */}
       {showCheckInPrompt && <CheckInPromptBanner />}
+
+      {/* Install affordance (S8): self-hides unless eligible (active goal +
+          3+ sessions), not already installed, and not previously dismissed.
+          Renders nothing on the server / first paint, so it never shifts the
+          dashboard baselines. */}
+      <InstallBanner hasActiveGoal={hasActiveGoal} />
 
       {/* Calm, constant error line — announced politely, visible in register. */}
       <p aria-live="polite" role="status" className="sr-only">

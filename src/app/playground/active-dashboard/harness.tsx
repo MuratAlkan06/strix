@@ -36,6 +36,10 @@ export function ActiveDashboardHarness({
       model={model}
       accomplished={accomplished}
       showCheckInPrompt={showCheckInPrompt}
+      // The auth-exempt playground has no Clerk user, so InstallBanner renders
+      // null regardless; false keeps the baselines byte-identical. The banner's
+      // own states are exercised on /playground/install-banner.
+      hasActiveGoal={false}
       onComplete={async () => ({ ok: true as const, alreadyDone: false })}
     />
   );
