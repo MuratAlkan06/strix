@@ -15,6 +15,7 @@
     "db:studio": "drizzle-kit studio",
     "ci:check-unscoped": "node scripts/check-unscoped-db.mjs",
     "ci:check-doc-parity": "node scripts/check-doc-parity.mjs",
+    "gate:prod-cutover": "node scripts/check-prod-cutover-gate.mjs",
     "test": "vitest",
     "test:run": "vitest run",
     "verify:phase-0": "node scripts/verify-phase.mjs 0",
