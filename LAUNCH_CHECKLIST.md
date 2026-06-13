@@ -65,3 +65,34 @@ Required before real scale. Not Phase-3-blocking — internal/closed-beta on Pha
 - [ ] **Per-user Anthropic spend cap + anomaly detection**. Alert when any user's daily or monthly Anthropic cost exceeds a threshold (suggested: $5/day or $50/month for any individual). Catches bugs (infinite-loop intakes) and abuse (someone scripting against the AI endpoints) before they bill significantly. Anthropic doesn't expose per-user usage natively — track from server-side logs.
 
   Tracking: #19
+
+---
+
+## PWA Install Matrix — Real-Device Verification
+
+This is the real-device sign-off for the Phase 2.5 "Installable PWA" formal gate (gate 4 in `planning/phase-2.5-pwa-polish.md`). Automated headless checks prove the CSS/manifest/SW are wired; only a physical device proves install / standalone / safe-area / offline behave correctly.
+
+**Prerequisite (blocking):** every gate requires a deployed **HTTPS** URL — PWA install / standalone / SW-offline / add-to-home-screen do **not** work against `http://localhost` on a physical device. Use a real authed test account; have a 2nd account ready for gate 9.5.
+
+**Devices:** iPhone 15 Pro (Safari), iPhone SE 3 (Safari), Pixel 8 (Chrome), Galaxy S22 (Chrome). Run 1–9.5 on each iPhone; gate 10 repeats the set on the Androids.
+
+| # | Gate | Exact action | Pass criterion | Evidence |
+|---|------|--------------|----------------|----------|
+| 1 | No browser chrome post-install | Install to home screen; tap icon to launch | App opens with zero browser chrome (no URL bar/toolbar/tab strip) | Screenshot |
+| 2 | Cold-launch speed | Force-quit; tap icon, time to dashboard first paint; repeat 5×, force-quit between | Median of 5 < 2.0s | 5 timings + median |
+| 3 | No URL-bar reveal on scroll | Scroll dashboard down then up firmly several times | No URL bar/chrome appears at any point | Screen recording |
+| 6 | iOS Add-to-Home-Screen (iOS) | Safari Share → Add to Home Screen → Add; launch from icon | Standalone; status bar styled; safe-area insets respected top AND bottom | Screenshot top+bottom |
+| 7 | In-app nav chrome-less | Standalone: dashboard → goal detail → Back | Works; no browser chrome on any screen incl. Back | Screenshots |
+| 8 | Resume after force-quit (authed) | Authed session; force-quit; reopen from icon | Resumes at dashboard for the authed session (no re-login, not stuck on splash) | Screenshot |
+| 9 | Offline cached dashboard | Load dashboard online; enable Airplane Mode; relaunch/refresh | Cached dashboard renders; Offline indicator visible; check-off disabled w/ tooltip; no crash | Screenshot |
+| 9.5 | Sign-out offline-data isolation | Sign out (online); enable Airplane Mode; reopen | NONE of prior user's data visible; offline shell or sign-in only | Screenshot proving no leak |
+| 10 | Android parity | Repeat 6–9.5 on Pixel 8 + Galaxy S22 (Chrome: menu → Install app) | Each gate passes on both | Per-device evidence |
+
+**Recording rules:**
+
+- Force-quit fully between gate-2 trials.
+- Gate 9 requires the page served online once first (the SW must have cached it).
+- Gate 9.5 sign-out must complete **online** before Airplane Mode.
+- Log device, OS version, app build/commit, and pass/fail per cell.
+
+**Sign-off owner:** project lead.

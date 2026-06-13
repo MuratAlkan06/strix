@@ -98,7 +98,7 @@ Pick the one that's currently maintained against Next.js 15 App Router. As of ea
 1. **Zero browser-chrome elements** visible after install on iPhone 15 Pro + Pixel 8. No URL bar, no Safari/Chrome top bar, no back-button chrome. Verified by screenshot in standalone mode.
 2. **Cold launch < 2.0s** from home-screen tap to dashboard first paint on the iPhone 15 Pro reference device (median of 5 trials, app force-quit between trials).
 3. **No URL-bar reveal during scroll** on either reference device. Scroll the dashboard top-to-bottom and bottom-to-top; the URL bar must not appear at any point.
-4. **Lighthouse PWA score ≥ 90** on the deployed preview, with zero failing audits.
+4. **Installable PWA** — *(supersedes the original "Lighthouse PWA score ≥ 90": Google removed the Lighthouse PWA category in v12 / May 2024, confirmed absent in Lighthouse 13.4.0; the installability criteria below are the faithful equivalent.)* On the deployed HTTPS preview, ALL of: manifest validates with `errors:[]` (Chrome DevTools → Application → Manifest, or CDP `Page.getAppManifest`); manifest declares `name`, `start_url`, `display: standalone`, `theme_color`, and ≥192px + ≥512px icons including a `maskable` icon; the service worker registers with a fetch handler; served over HTTPS; **no installability warnings** in DevTools → Application → Manifest; and a successful real-device install (see the device matrix in LAUNCH_CHECKLIST.md). Local pre-check 2026-06-13: manifest `errors:[]`, all required fields + maskable icons present, `/sw.js` served — PASS pending the HTTPS + real-device confirmation.
 5. **Manifest validates** against the W3C manifest spec (`web-app-manifest` validator).
 
 **End-to-end (real devices, not simulator):**
