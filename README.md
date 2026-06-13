@@ -211,7 +211,11 @@ src/
 │   │               ├── plan-review.tsx # editable review surface (client)
 │   │               ├── review-plan.ts # pure review/edit + color/deadline rules
 │   │               └── save-goal.ts # "Save goal": one transaction, draft → rows
-│   ├── (settings)/settings/page.tsx # placeholder shell
+│   ├── (settings)/settings/
+│   │   ├── page.tsx                 # /settings — account section (first sign-out UI)
+│   │   ├── sign-out-button.tsx      # purge AWAITED, then signOut() redirects (S7)
+│   │   ├── session-watch.tsx        # best-effort expiry/revocation purge watcher
+│   │   └── session-watch-model.ts   # pure signed-in→out transition machine
 │   ├── globals.css                  # goal-color palette CSS vars + shadcn tokens
 │   ├── page.tsx                     # public landing; redirects signed-in → /dashboard
 │   ├── sw.ts                        # service-worker entry — `serwist build` → public/sw.js
@@ -259,6 +263,7 @@ src/
 │   ├── limits.ts                    # free-tier usage caps (SPEC §10)
 │   ├── sw/runtime-caching.ts        # SW caching rules — versioned strix-* caches;
 │   │                                #   /api/ai/* pinned never-cached
+│   ├── sw/purge.ts                  # session-end full Cache Storage purge (S7)
 │   └── utils.ts                     # shadcn cn() helper
 └── proxy.ts                         # clerkMiddleware + public-route whitelist
                                      # (Next 16 renamed middleware.ts → proxy.ts)
