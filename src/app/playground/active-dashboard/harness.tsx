@@ -12,6 +12,7 @@ import type {
   AccomplishedCardModel,
   DashboardModel,
 } from "../../(dashboard)/dashboard/dashboard-model";
+import type { InstallVariant } from "@/lib/install-platform";
 
 export function ActiveDashboardHarness({
   greeting,
@@ -20,6 +21,7 @@ export function ActiveDashboardHarness({
   model,
   accomplished,
   showCheckInPrompt,
+  installBannerPreview,
 }: {
   greeting: string;
   dateLabel: string;
@@ -27,6 +29,12 @@ export function ActiveDashboardHarness({
   model: DashboardModel;
   accomplished: readonly AccomplishedCardModel[];
   showCheckInPrompt: boolean;
+  /** When set, the dashboard renders the eligible InstallBannerView IN CONTEXT
+   *  (the ?state=install-* harness states) so the in-place placement between
+   *  the check-in prompt and the hero countdown is reviewable on a live render.
+   *  Bypasses the Clerk/localStorage gates for the harness only — the real
+   *  eligibility logic is untouched and unit-tested elsewhere. */
+  installBannerPreview?: InstallVariant;
 }) {
   return (
     <ActiveDashboard
@@ -36,6 +44,12 @@ export function ActiveDashboardHarness({
       model={model}
       accomplished={accomplished}
       showCheckInPrompt={showCheckInPrompt}
+      // The auth-exempt playground has no Clerk user, so the gated InstallBanner
+      // renders null regardless; false keeps the non-install baselines
+      // byte-identical. installBannerPreview (when set) bypasses that for the
+      // in-context preview states.
+      hasActiveGoal={false}
+      installBannerPreview={installBannerPreview}
       onComplete={async () => ({ ok: true as const, alreadyDone: false })}
     />
   );

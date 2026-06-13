@@ -231,6 +231,7 @@ src/
 │   ├── horizon-header.tsx           # full-bleed dashboard header (scene + greeting scrim)
 │   ├── emblem.tsx                   # the Strix owl mark (flat geometric, no face)
 │   ├── goal-chip.tsx                # goal dot + name (color never the sole carrier)
+│   ├── install-banner.tsx           # dismissible "add to home screen" affordance (S8)
 │   ├── upgrade-modal.tsx            # free-cap dialog (no upgrade CTA until Phase 3)
 │   ├── countdown-stat.tsx           # tabular number + label primitive
 │   └── empty-dashboard.tsx          # empty-state composition (pre-dawn scene + CTA + tiles)
@@ -262,12 +263,15 @@ src/
 │   ├── goal-progress.ts             # milestone-derived progress + next milestone
 │   ├── goal-scene.ts                # activity_type → Scene variant (completion moment)
 │   ├── goal-seeds.ts                # empty-state tiles + the {climb,…} seed whitelist
+│   ├── install-platform.ts          # pure install-banner platform/eligibility decisions (S8)
 │   ├── ios-splash.ts                # iOS launch-screen device table (layout links +
 │   │                                #   scripts/generate-splash.mts share it)
 │   ├── limits.ts                    # free-tier usage caps (SPEC §10)
+│   ├── use-local-storage.ts         # install-banner client store: per-user session count +
+│   │                                #   dismissed flag (the only localStorage Strix keeps) (S8)
 │   ├── sw/runtime-caching.ts        # SW caching rules — versioned strix-* caches;
 │   │                                #   /api/ai/* pinned never-cached; /~offline fallback
-│   ├── sw/purge.ts                  # session-end full Cache Storage purge (S7)
+│   ├── sw/purge.ts                  # session-end purge: full Cache Storage + strix.install.* (S7/S8)
 │   └── utils.ts                     # shadcn cn() helper
 └── proxy.ts                         # clerkMiddleware + public-route whitelist
                                      # (Next 16 renamed middleware.ts → proxy.ts)

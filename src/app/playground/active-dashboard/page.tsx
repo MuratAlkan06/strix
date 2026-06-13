@@ -36,6 +36,15 @@
  *     coherent "all wins, nothing scheduled" dashboard (honest empty lines
  *     above the Accomplished section, never the pre-dawn empty state).
  *
+ * Phase 2.5 slice S8 in-context preview states (ADDITIVE — the populated
+ * fixtures and their baselines are untouched; these only INJECT the install
+ * banner the gated container can't surface here):
+ *   ?state=install-chrome — the populated dashboard with the eligible Chrome
+ *     install banner rendered IN PLACE (between the check-in prompt and the
+ *     hero countdown). Reviewable on a live render; the real eligibility logic
+ *     is bypassed for the harness only (installBannerPreview), never changed.
+ *   ?state=install-ios    — same, with the iOS "Add to Home Screen" variant.
+ *
  * /playground(.*) is Clerk-excluded (src/proxy.ts); the segment layout
  * noindexes it. Out of the README tree by design.
  */
@@ -51,7 +60,15 @@ import {
   type DashboardTaskLike,
   type CompletionLike,
 } from "../../(dashboard)/dashboard/dashboard-model";
+import type { InstallVariant } from "@/lib/install-platform";
 import { ActiveDashboardHarness } from "./harness";
+
+/** ?state=install-chrome / install-ios → the in-context InstallBannerView
+ *  variant the harness injects; anything else leaves the banner unrendered. */
+const INSTALL_PREVIEW: Record<string, InstallVariant> = {
+  "install-chrome": "chrome",
+  "install-ios": "ios",
+};
 
 const TODAY = "2026-06-10"; // Wednesday → weekday 3 (0 = Sunday)
 const FRIDAY = "2026-06-12"; // Friday → weekday 5 — the prompt window opens
@@ -321,6 +338,10 @@ export default async function PlaygroundActiveDashboardPage({
   const empty = selected === "empty-sections";
   const noActive = selected === "accomplished-no-active";
   const withAccomplished = selected === "accomplished" || noActive;
+  // S8 in-context preview: install-* states reuse the populated fixtures (which
+  // carry a milestone due today → the hero countdown, the banner's dismiss-focus
+  // neighbor, is present) and inject the eligible banner via installBannerPreview.
+  const installBannerPreview = selected ? INSTALL_PREVIEW[selected] : undefined;
   // Every state pins its date: the Friday state re-buckets the SAME populated
   // fixtures two days later, so the banner is judged by the real predicate.
   const today = selected === "friday-prompt" ? FRIDAY : TODAY;
@@ -365,6 +386,7 @@ export default async function PlaygroundActiveDashboardPage({
       }
       // The REAL predicate over the pinned date — no check-in row in any state.
       showCheckInPrompt={shouldShowCheckInPrompt(today, [])}
+      installBannerPreview={installBannerPreview}
     />
   );
 }
