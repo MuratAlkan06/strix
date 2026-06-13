@@ -262,6 +262,8 @@ src/
 │   ├── goal-progress.ts             # milestone-derived progress + next milestone
 │   ├── goal-scene.ts                # activity_type → Scene variant (completion moment)
 │   ├── goal-seeds.ts                # empty-state tiles + the {climb,…} seed whitelist
+│   ├── ios-splash.ts                # iOS launch-screen device table (layout links +
+│   │                                #   scripts/generate-splash.mts share it)
 │   ├── limits.ts                    # free-tier usage caps (SPEC §10)
 │   ├── sw/runtime-caching.ts        # SW caching rules — versioned strix-* caches;
 │   │                                #   /api/ai/* pinned never-cached; /~offline fallback
