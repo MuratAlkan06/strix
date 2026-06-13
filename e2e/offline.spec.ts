@@ -99,35 +99,6 @@ async function waitForOfflinePrecache(page: Page): Promise<void> {
   });
 }
 
-/**
- * Open `/~offline` deterministically across runners.
- *
- * Why this exists (a CI-only failure the first PR shipped with): unlike the
- * auth-exempt /playground routes (src/proxy.ts matcher), /~offline runs through
- * clerkMiddleware. Served ONLINE it carries `x-clerk-auth-reason:
- * dev-browser-missing`, so clerk.browser.js boots and runs the dev-browser
- * handshake by NAVIGATING THE MAIN FRAME to the Clerk Frontend API host. The
- * verify:ui harness points Clerk at a format-valid but deliberately unreachable
- * dummy FAPI (pk_test_…clerk.example.com — see .github/workflows/ci.yml). That
- * host resolves locally but hard-fails as net::ERR_NAME_NOT_RESOLVED on the
- * GitHub runner, and Chromium reports the failed main-frame navigation against
- * the original goto — surfacing as "ERR_NAME_NOT_RESOLVED at …/~offline".
- *
- * The offline screen is a static server component with ZERO Clerk UI, so
- * aborting the cross-origin Clerk asset before navigation neutralizes the
- * handshake without changing a single rendered pixel, the axe tree, or the
- * baseline. This mirrors how /playground stays off the Clerk handshake — kept
- * here at the spec layer so no product route or baseline is touched.
- */
-async function gotoOfflineScreen(page: Page): Promise<void> {
-  // clerk.browser.js loads from the (cross-origin) Frontend API host and is
-  // what triggers the handshake redirect; abort any request to a Clerk FAPI
-  // host. Same-origin app requests never match (the app is on localhost), so
-  // nothing the page legitimately needs is blocked.
-  await page.route(/^https?:\/\/[^/]*clerk[^/]*\//i, (route) => route.abort());
-  await page.goto(OFFLINE_ROUTE, { waitUntil: "networkidle" });
-}
-
 /** The visible (or sr-only-empty) connectivity live region. */
 function offlineIndicator(page: Page) {
   return page.getByRole("status").filter({ hasText: "Offline" });
@@ -167,7 +138,7 @@ test.describe("/~offline — the fallback screen", () => {
   test("renders the branded offline screen with zero WCAG 2.1 AA violations", async ({
     page,
   }) => {
-    await gotoOfflineScreen(page);
+    await page.goto(OFFLINE_ROUTE, { waitUntil: "networkidle" });
     await expect(
       page.getByRole("heading", { name: OFFLINE_HEADING }),
     ).toBeVisible();
@@ -185,7 +156,7 @@ test.describe("/~offline — the fallback screen", () => {
     const name = "offline-screen-mobile";
     skipUnlessBaseline(name, testInfo);
     await page.setViewportSize({ width: 375, height: 812 });
-    await gotoOfflineScreen(page);
+    await page.goto(OFFLINE_ROUTE, { waitUntil: "networkidle" });
     await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
   });
 });
