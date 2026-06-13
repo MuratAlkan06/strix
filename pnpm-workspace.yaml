@@ -1,3 +1,6 @@
 ignoredBuiltDependencies:
+  # esbuild ships its platform binary via optionalDependencies; the install
+  # script is only a fallback download/check, unnecessary here.
+  - esbuild
   - sharp
   - unrs-resolver
