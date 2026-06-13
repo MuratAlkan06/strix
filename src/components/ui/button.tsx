@@ -15,8 +15,16 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+        // Label is a LIGHTENED ember, not the raw --destructive token: the
+        // 0.62-L token rgb(213,88,77) on the destructive/10-over--card rest
+        // fill rgb(38,34,49) measures 3.93:1 — under the DESIGN.md §11 4.5:1
+        // floor for the 14px/500 label. oklch(0.70 0.14 28) (same ember hue
+        // 28, +L, slightly −C to stay calm) measures 5.45:1 at rest and
+        // 4.83:1 on the /20 hover fill. Fill + ring stay token-tied; the ring
+        // alpha is /40 (was /20) per the same phase-2.5 S7 design review —
+        // same correction class as §2's V2 on-white amber fix.
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+          "bg-destructive/10 text-[oklch(0.7_0.14_28)] hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/40 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
