@@ -79,7 +79,7 @@
   "pnpm": {
     "overrides": {
       "next>postcss": ">=8.5.10",
-      "@esbuild-kit/core-utils>esbuild": "^0.25.0"
+      "esbuild": ">=0.28.1"
     }
   }
 }
