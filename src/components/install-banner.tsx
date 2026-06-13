@@ -33,7 +33,7 @@
  */
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { ArrowUpFromLine, Download, Plus, X } from "lucide-react";
+import { Download, Plus, Share, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -57,6 +57,56 @@ type InstallPromptEvent = Event & {
 
 const SHELL =
   "flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm";
+
+/** The dismissal announcement (SR-polite). Constant so the test can assert it. */
+export const DISMISS_ANNOUNCEMENT = "Install prompt dismissed";
+
+/** The default id of the element to focus after dismiss — the hero countdown
+ *  region the banner sits above (active-dashboard.tsx tags it). Exported so the
+ *  dashboard and the e2e spec name the SAME anchor. */
+export const INSTALL_DISMISS_FOCUS_ID = "install-dismiss-focus-target";
+
+/**
+ * On dismiss the banner <section> unmounts; without intervention focus drops to
+ * <body> (a WCAG 2.4.3 focus-order failure for keyboard users — the S3 class of
+ * bug) and screen readers announce nothing. This purpose-built helper closes
+ * both gaps and runs from the SHARED dismiss button, so it covers the real
+ * dashboard mount AND the playground harness identically:
+ *
+ *   1. ANNOUNCE — write the dismissal into a persistent, body-level polite live
+ *      region. It must outlive the unmounting <section>, so it is appended to
+ *      <body> (not rendered inside the banner) and reused across dismissals.
+ *   2. FOCUS the documented neighbor by id (the hero countdown region, tagged
+ *      tabIndex={-1}). The move is deferred a frame so it lands AFTER React's
+ *      unmount commit; if the neighbor is somehow absent, focus is left for the
+ *      browser rather than forced onto <body>.
+ */
+function announceDismiss(): void {
+  if (typeof document === "undefined") return;
+  const ID = "install-dismiss-announcer";
+  let region = document.getElementById(ID);
+  if (region === null) {
+    region = document.createElement("div");
+    region.id = ID;
+    region.setAttribute("role", "status");
+    region.setAttribute("aria-live", "polite");
+    region.className = "sr-only";
+    document.body.appendChild(region);
+  }
+  // Clear-then-set so a repeat message still fires the live-region update.
+  region.textContent = "";
+  region.textContent = DISMISS_ANNOUNCEMENT;
+}
+
+function focusDismissNeighbor(neighborId: string): void {
+  if (typeof document === "undefined") return;
+  // Defer past React's unmount commit so the section is gone and the neighbor
+  // is the live next target (focusing during the same tick would race it).
+  requestAnimationFrame(() => {
+    const target = document.getElementById(neighborId);
+    target?.focus();
+  });
+}
 
 /** Platform signals (standalone / iOS) are static for the page's lifetime, so
  *  they need no subscription — this never calls back. */
@@ -94,18 +144,31 @@ export function InstallBannerView({
   variant,
   onInstall,
   onDismiss,
+  dismissFocusId = INSTALL_DISMISS_FOCUS_ID,
 }: {
   variant: InstallVariant;
   /** Chrome only — runs the native prompt(). */
   onInstall?: () => void;
   onDismiss: () => void;
+  /** Id of the neighbor to focus after dismiss (defaults to the hero countdown
+   *  region the dashboard tags); keeps focus off <body> when the section
+   *  unmounts. The harness overrides it with its own in-context anchor. */
+  dismissFocusId?: string;
 }) {
   if (variant === "none") return null;
+
+  // Shared dismiss path (real mount + harness): announce, hand off, then move
+  // focus to the documented neighbor so it lands after React unmounts us.
+  const handleDismiss = () => {
+    announceDismiss();
+    onDismiss();
+    focusDismissNeighbor(dismissFocusId);
+  };
 
   const dismiss = (
     <button
       type="button"
-      onClick={onDismiss}
+      onClick={handleDismiss}
       aria-label="Dismiss"
       className="-m-2 inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
     >
@@ -116,7 +179,10 @@ export function InstallBannerView({
   if (variant === "ios") {
     return (
       <section aria-label="Add Strix to your home screen" className={SHELL}>
-        <ArrowUpFromLine
+        {/* lucide `Share` is the iOS-style square-with-up-arrow — it mirrors
+            the real Safari Share control the instruction refers to (the bare
+            up-arrow `ArrowUpFromLine` was an approximation). */}
+        <Share
           aria-hidden="true"
           className="size-4 shrink-0 text-muted-foreground"
         />

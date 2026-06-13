@@ -71,7 +71,12 @@ import {
 import { CountdownStat } from "@/components/countdown-stat";
 import { GoalChip } from "@/components/goal-chip";
 import { HorizonHeader } from "@/components/horizon-header";
-import { InstallBanner } from "@/components/install-banner";
+import {
+  InstallBanner,
+  InstallBannerView,
+  INSTALL_DISMISS_FOCUS_ID,
+} from "@/components/install-banner";
+import type { InstallVariant } from "@/lib/install-platform";
 import { formatDate } from "@/lib/format";
 import { useOnline } from "@/lib/use-online";
 import { cn } from "@/lib/utils";
@@ -416,6 +421,12 @@ export interface ActiveDashboardProps {
   /** Server-known half of the S8 install-banner gate: ≥1 active goal. The
    *  session-count half + platform branch are resolved client-side. */
   hasActiveGoal: boolean;
+  /** HARNESS-ONLY: render the eligible InstallBannerView in context, bypassing
+   *  the Clerk/localStorage gates the playground can't satisfy, so the in-place
+   *  placement is reviewable on a live render. Undefined in production — the
+   *  real gated <InstallBanner /> renders and this never fires. Never wire it
+   *  from the product page. */
+  installBannerPreview?: InstallVariant;
   onComplete: CompleteTaskHandler;
 }
 
@@ -427,12 +438,16 @@ export function ActiveDashboard({
   accomplished,
   showCheckInPrompt,
   hasActiveGoal,
+  installBannerPreview,
   onComplete,
 }: ActiveDashboardProps) {
   // Optimistic check state layered over the server-derived completed flags;
   // rolled back on a failed action. Keyed by recurring task id.
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  // HARNESS-ONLY local dismissal so the in-context preview's dismiss button is
+  // exercisable in a real browser (verify:ui). No-op in production.
+  const [previewDismissed, setPreviewDismissed] = useState(false);
   // Offline state (S6): SSR-safe, flips with the window online/offline
   // events — e.g. the moment airplane mode toggles on a cached render.
   const online = useOnline();
@@ -518,8 +533,22 @@ export function ActiveDashboard({
       {/* Install affordance (S8): self-hides unless eligible (active goal +
           3+ sessions), not already installed, and not previously dismissed.
           Renders nothing on the server / first paint, so it never shifts the
-          dashboard baselines. */}
-      <InstallBanner hasActiveGoal={hasActiveGoal} />
+          dashboard baselines. The harness passes installBannerPreview to mount
+          the eligible view IN CONTEXT (bypassing gates it can't satisfy) so the
+          in-place placement/hierarchy is reviewable; production never sets it. */}
+      {installBannerPreview !== undefined ? (
+        previewDismissed ? null : (
+          <InstallBannerView
+            variant={installBannerPreview}
+            onInstall={
+              installBannerPreview === "chrome" ? () => {} : undefined
+            }
+            onDismiss={() => setPreviewDismissed(true)}
+          />
+        )
+      ) : (
+        <InstallBanner hasActiveGoal={hasActiveGoal} />
+      )}
 
       {/* Calm, constant error line — announced politely, visible in register. */}
       <p aria-live="polite" role="status" className="sr-only">
@@ -527,9 +556,19 @@ export function ActiveDashboard({
       </p>
       {error && <p className="text-sm text-muted-foreground">{error}</p>}
 
-      {/* Hero countdown — the next milestone on the horizon (tabular). */}
+      {/* Hero countdown — the next milestone on the horizon (tabular). It is
+          also the install banner's dismiss-focus neighbor: when the banner is
+          dismissed its <section> unmounts, so focus is moved here (id +
+          tabIndex=-1) rather than dropping to <body> — keeping keyboard order
+          intact. No role/aria-label is added (a roleless labeled div trips
+          aria-prohibited-attr); focus simply lands here and SR reads the
+          countdown content the Card already exposes. */}
       {model.nextMilestone && (
-        <Card>
+        <Card
+          id={INSTALL_DISMISS_FOCUS_ID}
+          tabIndex={-1}
+          className="outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
           <CardContent className="flex flex-wrap items-center justify-between gap-4">
             <CountdownStat
               value={model.nextMilestone.daysUntil}

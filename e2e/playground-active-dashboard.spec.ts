@@ -27,6 +27,14 @@
  * pins: the default state still renders NEITHER new surface (the additive
  * proof that keeps the original baselines byte-identical), the Friday banner
  * links /check-in, and accomplished cards deep-link to goal detail.
+ *
+ * Phase 2.5 slice S8 ADDS the install-chrome / install-ios IN-CONTEXT states
+ * (axe + mobile baseline each): the eligible install banner rendered in place
+ * between the check-in prompt and the hero countdown, which the gated
+ * <InstallBanner> can't surface in the auth-exempt playground. Plus the focus
+ * pin: keyboard-dismissing the banner moves focus to the documented neighbor
+ * (the hero countdown), NEVER to <body>, and a polite live region carries the
+ * dismissal text — the S3 focus-order regression class, asserted here.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -34,6 +42,14 @@ import { test, expect, type TestInfo } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 const ROUTE = "/playground/active-dashboard";
+
+// Mirror of install-banner.tsx's exported constants. The component is a
+// "use client" module (Clerk + React imports) and importing it into this Node
+// test context would drag those deps in, so the two STABLE strings are mirrored
+// here instead; install-banner.test.ts could pin parity, but they are constants
+// by contract (the announcement copy and the dismiss-focus anchor id).
+const INSTALL_DISMISS_FOCUS_ID = "install-dismiss-focus-target";
+const DISMISS_ANNOUNCEMENT = "Install prompt dismissed";
 
 /** True if a baseline PNG for `name` exists for the current project+platform. */
 function hasBaseline(name: string): boolean {
@@ -214,6 +230,73 @@ test.describe("/playground/active-dashboard — accomplished + Friday prompt (ph
       const name = `active-dashboard-${state}-${label}`;
       skipUnlessBaseline(name, testInfo);
       await page.setViewportSize(viewport);
+      await page.goto(`${ROUTE}?state=${state}`, { waitUntil: "networkidle" });
+      await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
+    });
+  }
+});
+
+test.describe("/playground/active-dashboard — install banner in context (S8)", () => {
+  for (const state of ["install-chrome", "install-ios"] as const) {
+    test(`${state} state has zero WCAG 2.1 AA violations (full page, no exclusions)`, async ({
+      page,
+    }) => {
+      await page.goto(`${ROUTE}?state=${state}`, { waitUntil: "networkidle" });
+      await expectNoAxeViolations(page);
+    });
+  }
+
+  test("the banner renders in place — between the check-in prompt and the hero countdown", async ({
+    page,
+  }) => {
+    await page.goto(`${ROUTE}?state=install-chrome`, {
+      waitUntil: "networkidle",
+    });
+    // The eligible Chrome banner the gated container can't surface here.
+    await expect(
+      page.getByRole("region", { name: "Install Strix" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Install" }),
+    ).toBeVisible();
+  });
+
+  test("keyboard-dismiss moves focus to the hero countdown (not <body>) and announces politely — the S3 focus-order pin", async ({
+    page,
+  }) => {
+    await page.goto(`${ROUTE}?state=install-chrome`, {
+      waitUntil: "networkidle",
+    });
+    const dismiss = page.getByRole("button", { name: "Dismiss" });
+    await dismiss.focus();
+    await expect(dismiss).toBeFocused();
+
+    // Enter on the X dismisses; the <section> unmounts.
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("region", { name: "Install Strix" }),
+    ).toHaveCount(0);
+
+    // Focus landed on the documented neighbor (the hero countdown), NOT <body>.
+    // The move is deferred a frame past the unmount commit, so this auto-retries.
+    await expect(page.locator(`#${INSTALL_DISMISS_FOCUS_ID}`)).toBeFocused();
+    expect(
+      await page.evaluate(() => document.activeElement === document.body),
+    ).toBe(false);
+
+    // …and the polite live region carries the dismissal text for SR users.
+    await expect(
+      page.locator("#install-dismiss-announcer"),
+    ).toHaveText(DISMISS_ANNOUNCEMENT);
+  });
+
+  for (const state of ["install-chrome", "install-ios"] as const) {
+    test(`matches the ${state} in-context mobile baseline (375×812)`, async ({
+      page,
+    }, testInfo) => {
+      const name = `active-dashboard-${state}-mobile`;
+      skipUnlessBaseline(name, testInfo);
+      await page.setViewportSize({ width: 375, height: 812 });
       await page.goto(`${ROUTE}?state=${state}`, { waitUntil: "networkidle" });
       await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
     });
