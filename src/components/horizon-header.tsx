@@ -8,6 +8,17 @@
  * A11y: text sits on a ≥40% token-coloured scrim (a bottom-anchored gradient
  * here) so it clears contrast against every sky stop it overlaps — never raw
  * text on the gradient. Height is reserved via clamp → no CLS.
+ *
+ * iOS standalone (phase 2.5 S9): the root layout opts into black-translucent +
+ * viewportFit:"cover" (S1), so in standalone the status bar draws OVER this
+ * header's top. The scene still paints edge-to-edge behind it (the brand frame
+ * is meant to run under the clock), but the emblem must clear the status bar —
+ * so its `top` is `max(1rem, env(safe-area-inset-top))`: exactly the prior 1rem
+ * (top-4) off-device where the inset is 0 — no layout shift — and the notch
+ * reserve under a real cutout. The header's reserved height grows by the same
+ * inset so the scene gains the band it now draws behind, keeping the
+ * greeting↔emblem proportion intact. The left offset also picks up the
+ * landscape-cutout inset so the emblem clears a side notch.
  */
 import { Emblem } from "@/components/emblem";
 import { Scene } from "@/components/scene";
@@ -28,7 +39,13 @@ export function HorizonHeader({
   return (
     <header
       className="relative isolate w-full overflow-hidden rounded-xl"
-      style={{ height: "clamp(120px, 22vh, 200px)" }}
+      style={{
+        // Reserved height + the status-bar reserve the scene now paints behind
+        // (env() = 0 off-device → identical to the prior clamp, no CLS / no
+        // baseline shift; grows only under a real cutout).
+        height:
+          "calc(clamp(120px, 22vh, 200px) + env(safe-area-inset-top))",
+      }}
     >
       {/* full-bleed scene */}
       <div className="absolute inset-0 -z-10">
@@ -46,8 +63,16 @@ export function HorizonHeader({
         }}
       />
 
-      {/* emblem, top-left, small, with clear-space */}
-      <div className="absolute left-4 top-4 flex items-center gap-2">
+      {/* emblem, top-left, small, with clear-space. top/left pick up the
+          notch + landscape-cutout reserve (max(1rem, env) = 1rem off-device,
+          so identical to the prior top-4/left-4 — no shift). */}
+      <div
+        className="absolute flex items-center gap-2"
+        style={{
+          top: "max(1rem, env(safe-area-inset-top))",
+          left: "max(1rem, env(safe-area-inset-left))",
+        }}
+      >
         <Emblem
           treatment="2-tone"
           className="size-7 text-foreground"

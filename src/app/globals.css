@@ -215,8 +215,61 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* iOS standalone polish (phase 2.5 S9, planning doc "iOS standalone
+     * polish"). The root viewport already opts into viewportFit:"cover" +
+     * appleWebApp black-translucent (S1), so the web content draws edge-to-edge
+     * UNDER the notch / dynamic island / home indicator. These two rules make
+     * that honest:
+     *   - overscroll-behavior: contain → no rubber-band bounce past the
+     *     content (the standalone "this is a webpage" tell on iOS). `contain`
+     *     not `none` so in-page scrollers still work.
+     *   - touch-callout disabled → a long-press on chrome (the brand frame,
+     *     scenes, decorative type) no longer raises the iOS share/save sheet.
+     *     Re-enabled below on the surfaces where selection/links matter, so
+     *     this stays surgical — never blanket-killing text selection. */
+    overscroll-behavior: contain;
+    -webkit-touch-callout: none;
   }
   html {
     @apply font-sans;
+  }
+  /* Keep the long-press callout (and its image/link save affordances) where
+   * the user genuinely interacts with content: form fields, links, and
+   * anything explicitly opted back in. Surgical re-enable, not a global undo. */
+  input,
+  textarea,
+  select,
+  a[href],
+  [data-touch-callout="true"] {
+    -webkit-touch-callout: default;
+  }
+}
+
+/* =========================================================================
+ * Safe-area inset utilities (phase 2.5 S9). env(safe-area-inset-*) is the
+ * notch / dynamic-island / home-indicator reserve; it resolves to 0 in every
+ * non-notched context (desktop, Android without cutout, the verify:ui
+ * headless browser), so applying these NEVER shifts layout off-device — they
+ * only expand under a real cutout. `max(token, env(...))` keeps an existing
+ * minimum (e.g. a card's own padding) and grows past it only when the inset
+ * demands. Compose these onto fixed/sticky elements and the root body wrapper.
+ * ========================================================================= */
+@layer utilities {
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right);
+  }
+  /* Additive variant: existing padding PLUS the inset, for fixed/sticky bars
+   * that already carry their own breathing room (the replan commit bar). */
+  .pb-safe-plus-3 {
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
   }
 }
