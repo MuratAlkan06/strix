@@ -1,5 +1,7 @@
 # Phase 2.5 — PWA polish
 
+**STATUS: code-complete 2026-06-13 (`v0.5.0-rc.1`).** All build slices S1–S9 merged; every automated gate green (manifest `errors:[]`, SW registers in dev+prod, offline e2e, analytics confirmed landing, axe a11y 100). The **formal gate to Phase 3 remains OPEN**, pending the deployed-preview installability check (gate 4's HTTPS/DevTools half) and the real-device install matrix in LAUNCH_CHECKLIST.md (owner-run). Do not start Phase 3 until both pass.
+
 **Goal:** §9 quality bar #6: "Install to home screen on iOS or Android and have it feel native enough to forget it's a webpage." This is the polish gate that prevents shipping a "kind of native" experience into commerce.
 
 **Prerequisites:** Phase 2 complete. The full §9 product loop works on a browser.
@@ -41,7 +43,7 @@ safe-area / overscroll / splash / tap-target layer on top. VERIFICATION LIMIT:
 verify:ui headless Chromium — so the automated suite proves the CSS is APPLIED
 and computes to its correct off-device baseline (a no-op that shifts no layout),
 but TRUE notch / dynamic-island / home-indicator behaviour is only verifiable on
-a real device — that is the §"Lighthouse / install audit" device matrix, S11,
+a real device — that is the §"Installability / install audit" device matrix, S11,
 user-owned.)
 
 - Status bar styling: `black-translucent` with safe-area-aware padding-top on the header. (S1 set `black-translucent`. S9: `src/components/horizon-header.tsx` gives the emblem `top:max(1rem, env(safe-area-inset-top))` and grows the reserved height by the same inset, so the brand scene still paints under the clock while the emblem/greeting clear it. `max()` = exactly the prior 1rem off-device → no baseline shift.)
@@ -65,9 +67,9 @@ user-owned.)
 - When offline: dashboard renders with cached data + a subtle "Offline" indicator. Check-off button visibly disabled with tooltip "Reconnects when you're online." (Implemented in S6: an SSR-safe `useOnline` hook — `navigator.onLine` + the window online/offline events — drives a quiet `role="status"` line under the header and an `aria-disabled`, dimmed check-off carrying that exact tooltip. No queued mutations; check-off simply isn't offered offline.)
 - All other routes (goal detail, new goal, equipment, settings) show a polite offline screen — no crash, no half-broken UI. (Implemented in S6 via Serwist `fallbacks` plus a last-position NetworkOnly document rule in the runtime table — Serwist only attaches its fallback plugin to runtime strategies, so unmatched documents needed a rule to fail through. Any same-origin document request that fails offline gets the precached `/~offline`, including `/dashboard` itself when its cache is empty (the signed-out / post-purge device). The route is Clerk-public so the precache install fetch never receives an auth redirect. Pinned by `e2e/offline.spec.ts`.)
 
-### Lighthouse / install audit
+### Installability / install audit
 
-- Run Lighthouse PWA audit. Target: PWA score ≥ 90, no failing audits.
+- PWA installability audit (the Lighthouse PWA category was removed in v12 / May 2024 — the canonical criteria are formal gate 4 below). Verify: manifest `errors:[]`, SW registers with a fetch handler, maskable icons present, themed status bar, and Chrome DevTools → Application → Manifest shows no installability warnings on the deployed preview.
 - **Device matrix** for real-device manual install (sign-off owner: project lead, recorded in the launch checklist):
   - **iPhone 15 Pro** (iOS 17+) — install via Safari, open from home screen, navigate, kill app, reopen. No browser chrome appears.
   - **iPhone SE 3rd gen** (iOS 17+) — same checks; safe-area edge cases differ from notch devices.

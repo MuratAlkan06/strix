@@ -120,7 +120,7 @@ Ship the 4–6 turn / hard-cap-10 default. PostHog feature flags exist (configur
 End-to-end:
 
 1. PostHog dashboard shows all 23 events from the taxonomy firing during a fresh user walkthrough (some events like `replan_rejected`, `subscription_resumed`, `email_sent` exercised via targeted scenarios).
-2. Lighthouse PWA score still ≥ 90 after polish.
+2. PWA installability criteria still pass after polish (Phase 2.5 gate 4 — the Lighthouse PWA score was retired in Lighthouse v12).
 3. axe-core reports zero violations on dashboard, goal detail, intake, replan diff, settings, billing.
 4. Playwright golden-path E2E passes on a clean Neon preview.
 5. Non-team-member dry-run hits all §9 bars without friction.
