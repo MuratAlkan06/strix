@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Server-side PostHog wrapper. Feature code MUST import from here, never
  * from `posthog-node` directly — the Phase 5 event-taxonomy enforcement

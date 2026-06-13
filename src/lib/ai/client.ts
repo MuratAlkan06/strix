@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Anthropic client chokepoint (ADR-0001). Feature code imports the narrow
  * helpers from this directory — never `@anthropic-ai/sdk` directly — so the
