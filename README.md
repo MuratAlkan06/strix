@@ -55,8 +55,8 @@ and close it with `ctx.waitUntil(pool.end())`.
 
 ## Deploy
 
-Target = **Vercel**, region **`iad1`** (US East), with Neon serverless Postgres
-and PostHog US co-located. The full deploy contract — env surface, code slices,
+Target = **Vercel**, region **`pdx1`** (US West, Oregon), with Neon serverless
+Postgres (`us-west-2`) co-located. The full deploy contract — env surface, code slices,
 provisioning runbook, and rollback — is **[ADR-0002](docs/adr/0002-production-deploy.md)**.
 
 `v0.5.0` certifies native-feel on a `*.vercel.app` **preview** (Clerk **dev**

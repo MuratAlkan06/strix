@@ -27,7 +27,7 @@ re-litigated.
 
 ## Decisions
 
-### 1. Database — Neon serverless Postgres (US East)
+### 1. Database — Neon serverless Postgres (US West, `us-west-2`)
 
 - Runtime `DATABASE_URL` = the Neon **POOLED** string (`-pooler` host,
   `sslmode=require`).
@@ -43,9 +43,10 @@ re-litigated.
   same posture documented in `README.md` §"Driver choice (Vercel serverless
   footgun)".
 
-### 2. Region — `iad1` (US East)
+### 2. Region — `pdx1` (US West, Oregon)
 
-Vercel functions pinned to `iad1`, co-located with Neon US East and PostHog US
+Vercel functions pinned to `pdx1`, co-located with the reused Neon `us-west-2`
+DB and the operator's US-West location (PostHog US ingestion is region-agnostic)
 to minimize cross-region latency on every request and background job.
 
 ### 3. `STRIX_BUILD_ID` — build-injected, not an env var
@@ -151,7 +152,7 @@ All server secrets are **server-only** in Vercel env; none appear in any
 
 - **CS-1** — `next.config.ts`: `generateBuildId` → `VERCEL_GIT_COMMIT_SHA`
   (fallback `null` locally, i.e. Next's default `BUILD_ID`).
-- **CS-2** — new `vercel.json`: `{ "regions": ["iad1"] }`. Do **NOT** override
+- **CS-2** — new `vercel.json`: `{ "regions": ["pdx1"] }`. Do **NOT** override
   `buildCommand` — keep `next build && serwist build`.
 - **CS-3** — add `export const maxDuration = 300` to
   `src/app/api/inngest/route.ts`. Valid on Hobby **and** Pro under Vercel fluid
