@@ -7,8 +7,16 @@ import { defineConfig } from "drizzle-kit";
 // environment already.
 config({ path: ".env.local" });
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is required to run drizzle-kit");
+// Prefer the direct (non-pooled) host so `db:push`/`db:studio` mirror the
+// migration runner's posture (ADR-0002 Decision 1). Unlike src/db/migrate.ts
+// we deliberately do NOT reject a `-pooler` host here: this config also backs
+// `db:generate` (runs in CI with a dummy DATABASE_URL) and `db:push` for local
+// Neon-branch dev, where a hard reject would break legitimate flows.
+const dbUrl = process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL;
+if (!dbUrl) {
+  throw new Error(
+    "DIRECT_DATABASE_URL or DATABASE_URL is required to run drizzle-kit",
+  );
 }
 
 export default defineConfig({
@@ -17,7 +25,7 @@ export default defineConfig({
   out: "./drizzle",
   casing: "snake_case",
   dbCredentials: {
-    url: process.env.DATABASE_URL,
+    url: dbUrl,
   },
   strict: true,
   verbose: true,

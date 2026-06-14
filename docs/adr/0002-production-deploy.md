@@ -34,6 +34,8 @@ re-litigated.
 - Schema migrations run **MANUALLY by the owner** against the **DIRECT**
   (non-pooled) host via a dedicated `DIRECT_DATABASE_URL` — **never** in the
   Vercel build. Locally this is `pnpm db:migrate` (`tsx src/db/migrate.ts`).
+  The migration runner reads `DIRECT_DATABASE_URL` (falling back to
+  `DATABASE_URL`) and **refuses** a resolved `-pooler` host (CS-7).
 - The Vercel serverless pooling footgun is **already handled in code**: the
   WebSocket `Pool` is constructed **per call inside `withTransactionalDb`**
   (`src/db/client.ts`), not at module scope. The default driver is
@@ -163,6 +165,9 @@ All server secrets are **server-only** in Vercel env; none appear in any
 - **CS-5** — add `import "server-only"` to `src/lib/analytics/server.ts` and
   `src/lib/ai/client.ts`.
 - **CS-6** — embedded auth routes per Decision 4.
+- **CS-7** — `src/db/migrate.ts` reads `DIRECT_DATABASE_URL ?? DATABASE_URL`
+  and refuses a `-pooler` host; `drizzle.config.ts` mirrors the preference
+  (no reject — it also backs `db:generate`/`db:push`).
 - **CI tripwire** — fail CI if Stripe/commerce code (an `sk_live_` literal or a
   `stripe` import) appears without a committed `PROD_CUTOVER_VERIFIED` marker.
 
