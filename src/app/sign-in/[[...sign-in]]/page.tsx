@@ -8,10 +8,22 @@
  * NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in (.env.example). src/proxy.ts already
  * public-lists /sign-in(.*) so the page renders before auth.
  *
- * Cosmetic appearance + localization are deferred to Phase 5 — keep this minimal.
+ * Centering (CS-9): the Clerk card is dropped into a flex container that fills
+ * the viewport and centers on both axes — the same pattern /~offline uses. We
+ * pin the height with `min-h-dvh` rather than relying on `min-h-full`: the root
+ * layout's body is `min-h-full`, which resolves against <html>'s height, and in
+ * this auth segment that chain collapses to 0 (nothing forces <html> to a
+ * height here), leaving the card pinned top-left with large gutters. `min-h-dvh`
+ * sizes against the dynamic viewport directly, so the card centers regardless of
+ * the ancestor height chain. The Clerk widget itself is intentionally the
+ * default theme — cosmetic appearance + localization are deferred to Phase 5.
  */
 import { SignIn } from "@clerk/nextjs";
 
 export default function SignInPage() {
-  return <SignIn />;
+  return (
+    <div className="flex min-h-dvh w-full flex-1 items-center justify-center p-4">
+      <SignIn />
+    </div>
+  );
 }

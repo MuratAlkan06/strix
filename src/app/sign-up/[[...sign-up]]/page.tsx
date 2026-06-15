@@ -8,10 +8,19 @@
  * NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up (.env.example). src/proxy.ts already
  * public-lists /sign-up(.*) so the page renders before auth.
  *
- * Cosmetic appearance + localization are deferred to Phase 5 — keep this minimal.
+ * Centering (CS-9): same pattern as the sign-in route — a flex container that
+ * fills the viewport via `min-h-dvh` and centers the Clerk card on both axes.
+ * `min-h-dvh` (not `min-h-full`) because the root body's `min-h-full` resolves
+ * against an <html> whose height chain collapses to 0 in this auth segment,
+ * which otherwise pins the card top-left. The Clerk widget stays the default
+ * theme — cosmetic appearance + localization are deferred to Phase 5.
  */
 import { SignUp } from "@clerk/nextjs";
 
 export default function SignUpPage() {
-  return <SignUp />;
+  return (
+    <div className="flex min-h-dvh w-full flex-1 items-center justify-center p-4">
+      <SignUp />
+    </div>
+  );
 }
