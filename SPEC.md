@@ -213,8 +213,8 @@ During MVP validation, optimize for product quality over infra cost. No artifici
 
 The planning agent should know the cost structure to design intelligently, even without optimizing aggressively for it:
 
-- **AI dominates.** At meaningful scale, Anthropic API spend will be 80-95% of infra. Database, hosting, auth are rounding errors.
-- **Plan generation is the most expensive single operation** (~$0.05 per call with Sonnet 4.6).
+- **AI dominates.** At meaningful scale, AI API spend dominates infra cost; database, hosting, and auth are rounding errors. (Specific cost breakdown in internal notes.)
+- **Plan generation is the most expensive single operation** (per-call economics in internal notes).
 - **Replans are the recurring cost driver** for active paid users.
 - **Intake chats are cheap** because they're short and conversational.
 

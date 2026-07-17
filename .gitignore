@@ -40,6 +40,9 @@
 # local tool settings/scratch
 .claude/
 
+# internal business notes — not for the public repo
+docs/private/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

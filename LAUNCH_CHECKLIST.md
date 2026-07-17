@@ -62,7 +62,7 @@ Required before real scale. Not Phase-3-blocking — internal/closed-beta on Pha
 
   Tracking: #18
 
-- [ ] **Per-user Anthropic spend cap + anomaly detection**. Alert when any user's daily or monthly Anthropic cost exceeds a threshold (suggested: $5/day or $50/month for any individual). Catches bugs (infinite-loop intakes) and abuse (someone scripting against the AI endpoints) before they bill significantly. Anthropic doesn't expose per-user usage natively — track from server-side logs.
+- [ ] **Per-user Anthropic spend cap + anomaly detection**. Alert when any user's daily or monthly Anthropic cost exceeds a threshold (specific thresholds in internal notes). Catches bugs (infinite-loop intakes) and abuse (someone scripting against the AI endpoints) before they bill significantly. Anthropic doesn't expose per-user usage natively — track from server-side logs.
 
   Tracking: #19
 

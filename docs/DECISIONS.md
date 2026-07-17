@@ -44,8 +44,7 @@ The "why" behind decisions that aren't captured in SPEC.md or PLAN.md. Read this
 **Tiers: Free (3 goals), Pro $9.99/mo or $89.99/yr (5 goals), Max $19.99/mo or $179.99/yr (5 goals + mentor).**
 
 **Why these numbers:**
-- $9.99 is the canonical "low-friction sub price" — people approve without thinking. Above $12/mo for personal-use apps is where balking starts.
-- Max at $19.99 matches Rise/Fabulous-tier AI-coaching pricing. The mentor is the AI-coaching differentiator and warrants premium positioning.
+- Pricing rationale: see internal notes.
 - 25% annual discount (higher than typical 15-20%) matches what AI-coaching apps do — Rise is only annual. Bigger discount funnels users into lower-churn tier.
 
 **Why Free is 3 goals not 2:**
@@ -99,9 +98,9 @@ The "why" behind decisions that aren't captured in SPEC.md or PLAN.md. Read this
 
 ## Competitive landscape
 
-**Waypoint** (App Store, March 2026 launch): direct concept overlap — AI-generated roadmaps from a goal, broken into milestones. Reviewed and judged "AI slop, not polished." Validates the space without threatening differentiation. Strix beats it on equipment-linked-to-milestones, weekly check-ins with structured replan, safety pushback, mentor in v2, and unified cross-goal dashboard.
+**Waypoint** (App Store, March 2026 launch): direct concept overlap — AI-generated roadmaps from a goal, broken into milestones. Reviewed internally (assessment in internal notes). Validates the space without threatening differentiation. Strix beats it on equipment-linked-to-milestones, weekly check-ins with structured replan, safety pushback, mentor in v2, and unified cross-goal dashboard.
 
-**Ultiself** (326K+ users, $19 premium): adjacent not direct. Habit-first ("pick habits to improve mood") with a fixed library of 250+ pre-built habits. Strix is goal-first ("I want to climb Mont Blanc — generate the plan") with custom AI-generated plans. Positioning line: "Ultiself helps you choose habits. Strix helps you reach the goals those habits serve."
+**Ultiself** (326K+ users, $19 premium): adjacent not direct. Habit-first ("pick habits to improve mood") with a fixed library of 250+ pre-built habits. Strix is goal-first ("I want to climb Mont Blanc — generate the plan") with custom AI-generated plans. Positioning line: see internal notes.
 
 **Habit-tracker namespace generally:** extremely crowded. Every short evocative discipline-coded word is taken (Forge, Grit, Commit, Ascend, etc.). This is why Strix exists — non-habit-tracker vocabulary, less saturated.
 
