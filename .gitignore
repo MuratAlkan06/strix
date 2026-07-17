@@ -40,6 +40,12 @@
 # local tool settings/scratch
 .claude/
 
+# internal business notes — not for the public repo
+docs/private/
+
+# local screenshot artifacts (root only — keep public/ icons and e2e/**-snapshots/ PNGs)
+/*.png
+
 # debug
 npm-debug.log*
 yarn-debug.log*
