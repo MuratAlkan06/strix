@@ -1,5 +1,8 @@
 # Strix
 
+[![ci](https://github.com/MuratAlkan06/strix/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/MuratAlkan06/strix/actions/workflows/ci.yml)
+[![License: FSL-1.1-MIT](https://img.shields.io/badge/license-FSL--1.1--MIT-blue)](./LICENSE.md)
+
 Goal-tracking app — see [SPEC.md](./SPEC.md) and [PLAN.md](./PLAN.md).
 
 ## Phase 0 setup
@@ -289,3 +292,11 @@ DPAs).
 Clerk delivers webhooks over the public internet. For local testing, expose
 the dev server with `ngrok http 3000` (or use Clerk's test mode) and point
 the dashboard's webhook endpoint at `https://<ngrok>/api/webhooks/clerk`.
+
+## License
+
+Strix is licensed under the [Functional Source License, Version 1.1, with MIT
+Future License (FSL-1.1-MIT)](./LICENSE.md) — source-available for any Permitted
+Purpose. Under the Grant of Future License, each version additionally becomes
+available under the MIT license on the second anniversary of the date we make it
+available.
