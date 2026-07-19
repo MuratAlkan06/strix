@@ -15,7 +15,7 @@ The source spec is at `goal_tracker_spec.md`.
 | Layer | Choice | Why |
 |---|---|---|
 | Framework | **Next.js 15 App Router + TypeScript** | Best mobile-first responsive + PWA posture; server actions enforce free-tier counters server-side; streaming AI; mature Vercel pairing. |
-| Database | **PostgreSQL on Neon** | Cheap, branch-per-preview, well-supported. |
+| Database | **PostgreSQL on Neon** | Cheap, branchable, well-supported. |
 | ORM | **Drizzle** | Type-safe schema, lightweight migrations, fits a TS-first codebase. |
 | Auth | **Clerk** | Magic-link + Google + Apple out of the box; mobile-friendly UX; webhook syncs `users` row. |
 | AI integration | **Server-routed Anthropic SDK** | Tier caps must be enforced server-side. Streaming for intake. **Sonnet 4.6** (`claude-sonnet-4-6`) for intake / plan-generation / replan **across all tiers** per §10. **Haiku 4.5** (`claude-haiku-4-5`) only for cheap classification — extracting structured `location_*` and `activity_type` from the intake transcript (the kind of "lightweight call no tier would notice" §10 explicitly permits). Anthropic prompt caching on the long system prompts. |
@@ -24,7 +24,7 @@ The source spec is at `goal_tracker_spec.md`.
 | Billing | **Stripe** | Trial-with-card, monthly + annual, prorated annual refunds via API. Custom cancel — *not* Stripe Customer Portal — so the §10 downgrade-and-archive screen is the only barrier (see §5 flag #1). |
 | Analytics | **PostHog (cloud)** | Server + client SDKs; event taxonomy from §9; doubles as feature-flag platform for §13.4 calibration. |
 | Email | **Resend** | Transactional only: cancellation receipt, deletion confirmation. No retention emails per §10. |
-| Hosting | **Vercel** | Pairs with Next.js; preview deploys with Neon branches. |
+| Hosting | **Vercel** | Pairs with Next.js; first-class preview deploys. Deploy topology frozen in ADR-0002. |
 
 Prices from spec §10 live as Stripe Product/Price IDs + a `lib/billing/config.ts` map — never hardcoded in business logic.
 
@@ -125,7 +125,7 @@ Schema-level §10 notes:
 | Folder structure | Feature folders per route group: `app/(dashboard)/`, `app/(goals)/`, `app/(equipment)/`, `app/(check-in)/`, `app/(settings)/`; shared `lib/ai/{prompts,clients,streaming}.ts`, `lib/billing/`, `lib/db/` | Colocates concerns; avoids a `components/` graveyard. |
 | Access scoping | Drizzle helper `scopedDb(userId)` that injects `user_id` on every read/write. No Postgres RLS in MVP. | RLS adds friction without much win when the same backend owns every query; the helper gives the same safety with simpler debugging. |
 | Testing | Vitest (unit + component) + Playwright (one §9 golden-path E2E) | Mock Anthropic with recorded fixtures so AI flows are testable. |
-| Deployment / envs | Vercel preview per branch, Neon DB branch per preview, production on `main` | Standard. |
+| Deployment / envs | Vercel; region `pdx1`; **one shared preview Neon DB** (a separate project from prod, migrated against the direct host — *not* branch-per-preview), production on the prod cutover. See ADR-0002. | Deploy contract frozen in ADR-0002. |
 | Analytics platform | PostHog (cloud) | Doubles as feature-flag tool for §3.4 calibration. |
 | Billing provider | Stripe | Trials with card, monthly + annual, refunds via API. |
 | Email | Resend transactional only | No retention emails per spec §10. |
@@ -162,3 +162,5 @@ Schema-level §10 notes:
 Each phase file is self-contained: items to build, verification criteria for that phase, and phase-specific context (prompts, schema notes, edge cases). Phases must land in order; Phase 2.5 strictly gates Phase 3.
 
 **Shipped:** Phase 0 closed 2026-06-10 (see [planning/phase-0-foundations.md](planning/phase-0-foundations.md) status header). Design-infrastructure work package (issue #1, PR #2) shipped 2026-06-10 as **v0.2.0**: the DAWN design system is frozen ([docs/DESIGN.md](docs/DESIGN.md)), the `verify:ui` axe + screenshot CI gate is live, and motion primitives landed — Phase 1 UI builds on it (see the Design-system handoff in [planning/phase-1-golden-path.md](planning/phase-1-golden-path.md)).
+
+**Deploy reframing (ADR-0002):** **v0.5.0 certifies native-feel on a `*.vercel.app` PREVIEW** (Clerk **dev** instance) — it is **not** a production deploy and stands up no custom domain. The **production** standup (custom domain + Clerk **prod** instance + prod Neon + prod PostHog + Stripe) is the **Phase-3 prod cutover**, gated by the Phase-3 commerce exit gate ([LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md), issue #70). The frozen deploy contract — Vercel/`pdx1`, one shared preview Neon DB, embedded Clerk auth, and the full env surface — lives in [ADR-0002](docs/adr/0002-production-deploy.md).

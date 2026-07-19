@@ -16,6 +16,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Prod-cutover tripwire (ADR-0002, issue #70): fail if commerce/Stripe
+      # code lands in src/ before the prod cutover is recorded by a committed
+      # .prod-cutover-verified marker. Runs first — it is fast, needs no
+      # secrets, and is a release-safety gate independent of the phase matrix.
+      - run: pnpm gate:prod-cutover
       # The phase gate: typecheck, lint, four-layer access-isolation check,
       # migration generation, unit + integration tests, production build.
       # verify-phase falls back to placeholder env values for db:generate and

@@ -8,6 +8,19 @@ Umbrella tracking issue: #7. Each item below carries its issue number and, where
 
 ---
 
+## Phase-3 commerce exit gate (BLOCKING)
+
+**Flag #1 — blocking.** Before **any** Phase-3 commerce / Stripe code ships to a real paying user, **both** of the following must pass:
+
+1. **Prod cutover** — custom domain + Clerk **prod** instance + prod Neon + prod PostHog stood up (the production standup deferred out of v0.5.0).
+2. **Re-run of the native-feel + gate-9.5 matrix on the real prod origin** — the PWA install matrix below, re-executed against production (not the preview). v0.5.0 only certifies native-feel on the `*.vercel.app` PREVIEW.
+
+Enforced by: the **CI tripwire** (a committed `PROD_CUTOVER_VERIFIED` marker — CI fails if Stripe/commerce code lands without it), a **runtime Stripe-live-key guard** to be implemented in Phase 3 (throws unless `STRIX_PROD_CUTOVER_VERIFIED=1`), and tracking issue **#70**.
+
+Rationale and the full deploy contract: **ADR-0002** (`docs/adr/0002-production-deploy.md`).
+
+---
+
 ## Phase-3-blocking
 
 Must exist before taking payment or shipping to the EU. If any of these is missing when Phase 3 ships, Phase 3 cannot go live.
@@ -94,5 +107,10 @@ This is the real-device sign-off for the Phase 2.5 "Installable PWA" formal gate
 - Gate 9 requires the page served online once first (the SW must have cached it).
 - Gate 9.5 sign-out must complete **online** before Airplane Mode.
 - Log device, OS version, app build/commit, and pass/fail per cell.
+
+**Evidence split (N1).** Real-device captures contain PII / test-account data and must NOT enter git:
+
+- **Raw media** (screenshots, screen recordings, the per-cell timings) → the **UNCOMMITTED** sibling directory `strix-phase2.5-evidence/` (a sibling of this repo, not tracked). Keeps test-account data out of version control.
+- **Durable verdict** (the pass/fail table filled in per device + cell, and the project-lead sign-off) → committed **here**, in this file. This committed table is the authoritative record; the raw media is supporting evidence held outside git.
 
 **Sign-off owner:** project lead.

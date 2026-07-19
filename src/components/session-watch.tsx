@@ -6,17 +6,15 @@
  * pure watchSession machine and fires purgeClientCaches when a signed-in
  * session ends while mounted.
  *
- * COVERAGE LIMIT (honest): mounted on /settings only, so it observes a
- * session end only while the user is on the settings surface. App-wide
- * coverage needs this component in the root layout — a one-line follow-up
- * deferred because src/app/layout.tsx is owned by the parallel S6 slice
- * (offline fallback). The sign-out button is the primary, fully-covered
- * purge path; this watcher is the best-effort layer the planning doc asks
- * for ("on session expiry / remote revocation when detected").
+ * Mounted app-wide in the root layout (ADR-0002 CS-4), inside <ClerkProvider>
+ * so useAuth() is available — so it observes a session end on any surface, not
+ * just /settings. The sign-out button remains the primary, fully-covered purge
+ * path; this watcher is the best-effort layer the planning doc asks for ("on
+ * session expiry / remote revocation when detected").
  *
- * When the user signs out via the button on this page, the button's own
- * purge runs first and this watcher fires a second purge on the auth flip —
- * harmless: purging an already-empty Cache Storage is idempotent.
+ * When the user signs out via the button, the button's own purge runs first
+ * and this watcher fires a second purge on the auth flip — harmless: purging
+ * an already-empty Cache Storage is idempotent.
  */
 import { useEffect, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";

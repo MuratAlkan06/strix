@@ -14,17 +14,29 @@ cp .env.example .env.local   # then fill in values from each provider's dashboar
 
 ### Required env vars (Phase 0)
 
-- `DATABASE_URL` — Neon connection string. Use a separate Neon branch per
-  developer; `pnpm db:push` writes directly to it.
+- `DATABASE_URL` — Neon connection string. Locally, a separate Neon branch per
+  developer; `pnpm db:push` writes directly to it. In a deployed env this is the
+  Neon **pooled** host (`-pooler`).
+- `DIRECT_DATABASE_URL` — Neon **direct** (non-pooled) host, used **only** by
+  `pnpm db:migrate` (run manually by the owner). Never set in the Vercel runtime —
+  a build must not mutate the schema.
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` — Clerk app keys.
 - `CLERK_WEBHOOK_SECRET` — webhook endpoint signing secret from Clerk's
   dashboard. Verified against svix headers in the route handler.
+- `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in`, `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up`
+  — point Clerk at the embedded auth routes (`app/sign-in`, `app/sign-up`) so
+  email/password auth stays on-origin (ADR-0002 decision 4).
 - `INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY` — without `INNGEST_SIGNING_KEY`,
-  `serve()` accepts unsigned calls. Always set it.
+  `serve()` accepts unsigned calls. Always set it. In deployed envs these are set
+  by the Inngest Vercel integration, and `INNGEST_DEV` **must be absent** (if
+  truthy, `/api/inngest` skips signature verification).
 - `POSTHOG_API_KEY`, `NEXT_PUBLIC_POSTHOG_KEY` — server + client analytics.
 
 Phase 3 adds `STRIPE_*`. Phase 4 adds `RESEND_API_KEY`. The Anthropic key
-slots in for Phase 1.
+slots in for Phase 1. `STRIX_BUILD_ID` is **not** an env var — it is
+build-injected by `serwist build` (see Deploy below). The full env surface and
+sourcing live in [`.env.example`](./.env.example) and
+[ADR-0002](docs/adr/0002-production-deploy.md).
 
 ## Database
 
@@ -43,6 +55,18 @@ safe to import at module scope. Do **not** swap in `@neondatabase/serverless`
 (connections leak across invocations). When Phase 1's "Save goal" flow needs
 multi-statement transactions, create the `Pool` **inside the request handler**
 and close it with `ctx.waitUntil(pool.end())`.
+
+## Deploy
+
+Target = **Vercel**, region **`pdx1`** (US West, Oregon), with Neon serverless
+Postgres (`us-west-2`) co-located. The full deploy contract — env surface, code slices,
+provisioning runbook, and rollback — is **[ADR-0002](docs/adr/0002-production-deploy.md)**.
+
+`v0.5.0` certifies native-feel on a `*.vercel.app` **preview** (Clerk **dev**
+instance; Clerk forbids prod keys on `*.vercel.app`). The **production** standup
+— custom domain + Clerk **prod** instance + prod Neon/PostHog + Stripe — is
+**Phase 3** (the prod cutover; LAUNCH_CHECKLIST.md, issue #70). Migrations are a
+manual `pnpm db:migrate` against `DIRECT_DATABASE_URL`, never in the build.
 
 ## Access scoping
 
@@ -216,9 +240,7 @@ src/
 │   │               └── save-goal.ts # "Save goal": one transaction, draft → rows
 │   ├── (settings)/settings/
 │   │   ├── page.tsx                 # /settings — account section (first sign-out UI)
-│   │   ├── sign-out-button.tsx      # purge AWAITED, then signOut() redirects (S7)
-│   │   ├── session-watch.tsx        # best-effort expiry/revocation purge watcher
-│   │   └── session-watch-model.ts   # pure signed-in→out transition machine
+│   │   └── sign-out-button.tsx      # purge AWAITED, then signOut() redirects (S7)
 │   ├── ~offline/page.tsx            # offline fallback screen (SW-precached, served
 │   │                                #   for any document request that fails offline)
 │   ├── globals.css                  # goal-color palette CSS vars + shadcn tokens
@@ -235,6 +257,8 @@ src/
 │   ├── emblem.tsx                   # the Strix owl mark (flat geometric, no face)
 │   ├── goal-chip.tsx                # goal dot + name (color never the sole carrier)
 │   ├── install-banner.tsx           # dismissible "add to home screen" affordance (S8)
+│   ├── session-watch.tsx            # app-wide expiry/revocation purge watcher (S7/CS-4)
+│   ├── session-watch-model.ts       # pure signed-in→out transition machine
 │   ├── upgrade-modal.tsx            # free-cap dialog (no upgrade CTA until Phase 3)
 │   ├── countdown-stat.tsx           # tabular number + label primitive
 │   └── empty-dashboard.tsx          # empty-state composition (pre-dawn scene + CTA + tiles)
