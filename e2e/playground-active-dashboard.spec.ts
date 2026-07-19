@@ -136,6 +136,46 @@ test.describe("/playground/active-dashboard — active DAWN dashboard", () => {
   });
 });
 
+test.describe("/playground/active-dashboard — schedule-row expand/collapse (CS-11)", () => {
+  // "Zone-2 run" is TODAY's weekly session (goal g-race "Half marathon",
+  // weekday Wed, 40 min). Scope every assertion to its own <li> — the goal
+  // "Half marathon" also owns always-visible due rows + the hero countdown, so
+  // an unscoped goal-link query would match those regardless of row state.
+  test("collapsed hides the goal attribution + cadence; expanding reveals both; aria-expanded tracks state", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+
+    const row = page
+      .locator("li")
+      .filter({ has: page.getByRole("button", { name: /Zone-2 run/ }) });
+    const toggle = row.getByRole("button", { name: /Zone-2 run/ });
+    const goalLink = row.getByRole("link", { name: "Half marathon" });
+    const cadence = row.getByText(/Every Wed/);
+
+    // COLLAPSED: the row body toggle is present and closed; neither the goal
+    // deep-link nor the cadence·duration line is rendered.
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(goalLink).toHaveCount(0);
+    await expect(cadence).toHaveCount(0);
+
+    // EXPAND: the goal attribution (deep link to /goals/g-race) and the
+    // cadence·duration detail appear; aria-expanded flips true.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(goalLink).toBeVisible();
+    await expect(goalLink).toHaveAttribute("href", "/goals/g-race");
+    await expect(cadence).toBeVisible();
+    await expect(cadence).toContainText("40 min");
+
+    // COLLAPSE again: both retract and aria-expanded returns to false.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(goalLink).toHaveCount(0);
+    await expect(cadence).toHaveCount(0);
+  });
+});
+
 test.describe("/playground/active-dashboard — accomplished + Friday prompt (phase 2)", () => {
   for (const state of [
     "accomplished",

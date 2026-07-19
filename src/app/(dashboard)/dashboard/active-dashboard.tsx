@@ -16,11 +16,17 @@
  * count and date. Task rows are clean chrome — text + GoalChip + checkbox,
  * no illustration (§6).
  *
- * Row anatomy: checkbox (Today tasks only — Phase 1 is check-only, no
- * un-check) · tap the row body to expand cadence/duration details · tap the
- * goal NAME to deep-link to /goals/[id]. Completed-today tasks stay visible,
- * struck and checked. Overdue due-rows carry the amber icon-paired "was due"
- * note (§8 — warning is amber, never red).
+ * Row anatomy (CS-11): a COLLAPSED task row is the goal-color dot + activity
+ * title + a compact cadence label (weekday / "Daily") + the expand chevron —
+ * the goal attribution and cadence·duration stay hidden. Tapping the row body
+ * expands it, revealing the goal-attribution line (dot + NAME, the deep link
+ * to /goals/[id]) and the cadence·duration detail. The color dot rides beside
+ * the title collapsed and drops to the goal line expanded, so every row stays
+ * goal-distinguishable in both states — and the collapsed dot is sr-only-paired
+ * with the goal name so color is never the sole signal (§11). Checkbox is Today
+ * tasks only (Phase 1 is check-only, no un-check). Completed-today tasks stay
+ * visible, struck and checked. Overdue due-rows carry the amber icon-paired
+ * "was due" note (§8 — warning is amber, never red).
  *
  * Phase 2 surfaces (slice 6+7):
  *   - Check-in prompt — a quiet banner under the header on Friday/Saturday
@@ -112,8 +118,15 @@ function GoalNameLink({ row }: { row: { goalId: string; goalTitle: string; goalC
   );
 }
 
-/** Expanded details: cadence + duration, plain and declarative. */
-function TaskDetails({ row, id }: { row: TaskRowModel; id: string }) {
+/** Expanded details: cadence + duration, plain and declarative. Indented to
+ *  sit under the title (past the checkbox lane on checkable rows). */
+function TaskDetails({
+  row,
+  checkable,
+}: {
+  row: TaskRowModel;
+  checkable: boolean;
+}) {
   const cadence =
     row.cadence === "daily"
       ? "Every day"
@@ -121,7 +134,12 @@ function TaskDetails({ row, id }: { row: TaskRowModel; id: string }) {
         ? `Every ${WEEKDAY_SHORT[row.weekday]}`
         : "Weekly";
   return (
-    <p id={id} className="pb-2 pl-8 pr-2 text-xs text-muted-foreground">
+    <p
+      className={cn(
+        "pb-2 pr-2 text-xs text-muted-foreground",
+        checkable ? "pl-10" : "pl-2",
+      )}
+    >
       {cadence}
       {row.durationMin !== null && (
         <>
@@ -139,7 +157,6 @@ function TaskRow({
   checked,
   offline,
   onCheck,
-  rightLabel,
 }: {
   row: TaskRowModel;
   /** Only TODAY tasks are checkable — a future weekly session is not. */
@@ -148,12 +165,20 @@ function TaskRow({
   /** Offline (S6): check-off is visibly disabled, with the tooltip below. */
   offline: boolean;
   onCheck: (row: TaskRowModel) => void;
-  /** This-week rows show their weekday on the right. */
-  rightLabel?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = `task-details-${row.id}`;
   const offlineHintId = `offline-hint-${row.id}`;
+  // The compact cadence indicator that rides on the right in BOTH states — the
+  // weekday for a weekly session, "Daily" for a daily task — so the schedule
+  // reads at a glance without expanding. ("Weekly" is defensive: the model
+  // filters malformed weekly rows out before they reach here.)
+  const cadenceLabel =
+    row.cadence === "daily"
+      ? "Daily"
+      : row.weekday !== null
+        ? WEEKDAY_SHORT[row.weekday]
+        : "Weekly";
   return (
     <li className="flex flex-col">
       <div className="flex min-h-11 items-center gap-3 rounded-lg px-2 py-1.5">
@@ -211,6 +236,21 @@ function TaskRow({
           aria-controls={detailsId}
           className="-my-1 flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
+          {/* Collapsed: the parent-goal color dot rides beside the title so
+              multi-goal schedules stay distinguishable at a glance; when
+              expanded the dot drops to the goal-attribution line below. The dot
+              itself is aria-hidden (same as GoalChip's), so the goal name is
+              carried for AT by the sr-only pairing after the title — color is
+              never the sole signal (§11). */}
+          {!expanded && (
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full ring-1 ring-foreground/10"
+              style={{
+                backgroundColor: `var(--goal-color-${row.goalColorIndex})`,
+              }}
+            />
+          )}
           <span
             className={cn(
               "min-w-0 flex-1 text-sm leading-snug transition-colors",
@@ -219,11 +259,10 @@ function TaskRow({
           >
             {row.title}
           </span>
-          {rightLabel && (
-            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-              {rightLabel}
-            </span>
-          )}
+          {!expanded && <span className="sr-only">{row.goalTitle}</span>}
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {cadenceLabel}
+          </span>
           <ChevronDown
             aria-hidden="true"
             className={cn(
@@ -233,11 +272,16 @@ function TaskRow({
           />
         </button>
       </div>
-      {/* Secondary line: goal attribution (dot + NAME — the deep link). */}
-      <div className={cn("flex items-center px-2", checkable && "pl-10")}>
-        <GoalNameLink row={row} />
-      </div>
-      {expanded && <TaskDetails row={row} id={detailsId} />}
+      {/* Expanded disclosure (aria-controls target): the goal attribution
+          (dot + NAME — the deep link) over the cadence·duration detail. */}
+      {expanded && (
+        <div id={detailsId}>
+          <div className={cn("flex items-center px-2", checkable && "pl-10")}>
+            <GoalNameLink row={row} />
+          </div>
+          <TaskDetails row={row} checkable={checkable} />
+        </div>
+      )}
     </li>
   );
 }
@@ -491,11 +535,6 @@ export function ActiveDashboard({
         checked={isChecked(row)}
         offline={!online}
         onCheck={handleCheck}
-        rightLabel={
-          !checkable && row.weekday !== null
-            ? WEEKDAY_SHORT[row.weekday]
-            : undefined
-        }
       />
     ) : (
       <DueRow key={`${row.kind}-${row.id}`} row={row} today={today} />
