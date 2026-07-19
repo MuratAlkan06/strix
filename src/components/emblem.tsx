@@ -1,21 +1,29 @@
 /**
  * Emblem — the Strix owl mark (DESIGN.md §10).
  *
- * Strix is Latin for owl. The mark is a MINIMAL GEOMETRIC owl emblem: an
- * abstract perched silhouette built in the same flat-fill geometric language as
- * the terrain scenes — no face, no eyes, no beak, no limbs, no cartoon styling.
+ * Strix is Latin for owl. As of the 2026-07-19 v0.5.0 device demo the project
+ * lead aligned the in-app mark to the curated **V6a "Night Watch"** owl — the
+ * same mark as the PWA/home-screen icon (superseding the round-1 perched-owl
+ * seed emblem, which read as a blob at small size; see DECISIONS.md "Visual
+ * register" + DESIGN.md §10). The geometry is the tufted owl-head silhouette
+ * with two eyes and a beak kite, authored in a 512 box (copied VERBATIM from
+ * the v6a variant in scripts/generate-icons.mjs so the mark and icon stay one
+ * geometry).
  *
- * Seed-grammar requirement (load-bearing): this geometry is the SEED of a future
- * owl-FORM construction system (one language from mark → figure). It is built
- * from the same anchors/proportions/fill discipline as a scene silhouette so a
- * later coach-figure can be derived from these rules, not bolted on as a
- * separate art style. Construction notes:
- *   - two ear-tufts (asymmetric weight, never a symmetric cartoon "horned" pair)
- *   - a rounded hunched body that reads as a perched owl in negative space
- *   - the breast notch is the ONE 2-tone facet (token + accent), extensible to
- *     a chest/wing facet on a full figure
+ * Tonal lockup — why this differs from the icon's fills. The icon is a large,
+ * opaque tile with its OWN flat dusk ground, so it can use the v6a treatment
+ * (dark elevated-dusk head + solid amber eyes) legibly at ≥60px. The in-app
+ * mark is a small (~24–40px) BARE silhouette painted over live dawn/dusk scenes
+ * (sky-top L 0.16–0.20) and the offline `--background` — where a dark head
+ * vanishes and solid amber eyes wash out. So the in-app mark uses the DARK-
+ * SURFACE lockup of the same owl (DESIGN.md §10, DECISIONS.md): a light head
+ * silhouette in the body token + dusk eye-sockets with amber irises + an amber
+ * beak — the amber stays the single point of heat and clears the ≥3:1 glyph
+ * floor (§11). This is exactly the tonal adaptation the icon's round-3 explored
+ * as "v6b"; it is the same owl, not a second mark.
  *
- * Treatments: `mono` (single token) and `2-tone` (token body + accent facet).
+ * Treatments: `mono` (single body token; eyes/beak read as dark sockets) and
+ * `2-tone` (body token + amber accent on eyes/beak). The default is `2-tone`.
  */
 import { cn } from "@/lib/utils";
 
@@ -25,41 +33,68 @@ interface EmblemProps {
   title?: string;
 }
 
-// Owl body silhouette — one continuous flat path in a 32×32 box.
-// Asymmetric ear-tufts (left tuft taller), rounded shoulders, tapered tail.
-const BODY_D =
-  "M16 3 " +
-  "C 13.6 5 12.4 6.8 12.2 8.6 " + // left ear-tuft down to brow
-  "C 9 9 6.6 11.4 6.2 15 " + // left shoulder
-  "C 5.6 19.6 7 24 10 26.6 " + // left flank
-  "C 12 28.4 14 29.2 16 29.4 " + // base left → centre
-  "C 18 29.2 20 28.4 22 26.6 " + // base right
-  "C 25 24 26.4 19.6 25.8 15 " + // right flank
-  "C 25.4 11.4 23 9 19.8 8.6 " + // right shoulder
-  "C 19.6 6.6 18.2 4.8 16 3 " + // right ear-tuft (shorter) → close
-  "Z";
-
-// The single 2-tone facet — a breast notch (chevron) in the accent token.
-const FACET_D = "M16 14 C 14.4 16.4 13.6 19 13.8 21.6 L 16 19.6 L 18.2 21.6 C 18.4 19 17.6 16.4 16 14 Z";
+// V6a "Night Watch" geometry — copied VERBATIM from the v6a variant in
+// scripts/generate-icons.mjs (512 box). Tufted owl-head silhouette; eye discs
+// at r 46; beak kite. Keeping the 512 viewBox means the paths match the icon
+// pipeline byte-for-byte (one geometry, mark ↔ icon).
+const HEAD_D =
+  "M 132 128 Q 256 250 380 128 C 428 182 444 262 408 330 " +
+  "C 372 402 312 430 256 430 C 200 430 140 402 104 330 " +
+  "C 68 262 84 182 132 128 Z";
+const EYES = [
+  { cx: 188, cy: 268 },
+  { cx: 324, cy: 268 },
+];
+const EYE_R = 46; // socket radius (v6a)
+const IRIS_R = 24; // amber iris radius (v6b lockup: reads on the light head)
+const BEAK_POINTS = "256,288 278,330 256,376 234,330";
 
 export function Emblem({
   treatment = "2-tone",
   className,
   title = "Strix",
 }: EmblemProps) {
+  const body = "var(--emblem-body, currentColor)";
+  // Dusk socket so the eyes read on a LIGHT head (solid amber would wash out);
+  // falls back to the canonical dark ground token when unset.
+  const socket = "var(--emblem-socket, var(--background))";
+  const accent = "var(--emblem-accent, var(--primary))";
+  const twoTone = treatment === "2-tone";
+
   return (
     <svg
-      viewBox="0 0 32 32"
+      viewBox="0 0 512 512"
       className={cn("block", className)}
       role="img"
       aria-label={title}
     >
-      <path d={BODY_D} style={{ fill: "var(--emblem-body, currentColor)" }} />
-      {treatment === "2-tone" && (
-        <path
-          d={FACET_D}
-          style={{ fill: "var(--emblem-accent, var(--primary))" }}
-        />
+      {/* Head silhouette — the body token (currentColor on dark scenes). */}
+      <path d={HEAD_D} style={{ fill: body }} />
+
+      {/* Eye sockets — dark discs knocked into the head so the amber (2-tone)
+          or the socket itself (mono) reads as two watching eyes. */}
+      {EYES.map((e) => (
+        <circle key={`s${e.cx}`} cx={e.cx} cy={e.cy} r={EYE_R} style={{ fill: socket }} />
+      ))}
+
+      {twoTone ? (
+        <>
+          {/* Amber irises — the glow of an owl watching at dusk. */}
+          {EYES.map((e) => (
+            <circle
+              key={`i${e.cx}`}
+              cx={e.cx}
+              cy={e.cy}
+              r={IRIS_R}
+              style={{ fill: accent }}
+            />
+          ))}
+          {/* Beak kite — the single point of heat with the eyes. */}
+          <polygon points={BEAK_POINTS} style={{ fill: accent }} />
+        </>
+      ) : (
+        // Mono: beak reads as a dark notch in the single-token head.
+        <polygon points={BEAK_POINTS} style={{ fill: socket }} />
       )}
     </svg>
   );
