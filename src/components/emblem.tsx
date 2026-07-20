@@ -31,6 +31,13 @@ interface EmblemProps {
   treatment?: "mono" | "2-tone";
   className?: string;
   title?: string;
+  /**
+   * Decorative use: render `aria-hidden` with no role/label. Set this where a
+   * visible "Strix" wordmark sits adjacent to the mark, so a screen reader
+   * names the brand once instead of announcing "Strix, Strix". Left unset the
+   * mark is a labelled image (`role="img"` + `title`) for standalone use.
+   */
+  decorative?: boolean;
 }
 
 // V6a "Night Watch" geometry — copied VERBATIM from the v6a variant in
@@ -53,6 +60,7 @@ export function Emblem({
   treatment = "2-tone",
   className,
   title = "Strix",
+  decorative = false,
 }: EmblemProps) {
   const body = "var(--emblem-body, currentColor)";
   // Dusk socket so the eyes read on a LIGHT head (solid amber would wash out);
@@ -65,8 +73,9 @@ export function Emblem({
     <svg
       viewBox="0 0 512 512"
       className={cn("block", className)}
-      role="img"
-      aria-label={title}
+      {...(decorative
+        ? { "aria-hidden": true }
+        : { role: "img", "aria-label": title })}
     >
       {/* Head silhouette — the body token (currentColor on dark scenes). */}
       <path d={HEAD_D} style={{ fill: body }} />
