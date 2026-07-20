@@ -153,11 +153,16 @@ test.describe("/playground/active-dashboard — schedule-row expand/collapse (CS
     const goalLink = row.getByRole("link", { name: "Half marathon" });
     const cadence = row.getByText(/Every Wed/);
 
-    // COLLAPSED: the row body toggle is present and closed; neither the goal
-    // deep-link nor the cadence·duration line is rendered.
+    // COLLAPSED: the row body toggle is present and closed; the goal deep-link
+    // and the cadence·duration line are HIDDEN. The disclosure is always
+    // mounted now (so the reveal/retract can be a real height transition — CS-11
+    // motion fix), but collapsed it is visibility-hidden: dropped from the a11y
+    // tree and the tab order and clipped to zero height. toBeHidden() asserts
+    // that non-visibility/non-accessibility (the functional intent) regardless
+    // of the hide technique — a ghost link would be caught here.
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(goalLink).toHaveCount(0);
-    await expect(cadence).toHaveCount(0);
+    await expect(goalLink).toBeHidden();
+    await expect(cadence).toBeHidden();
 
     // EXPAND: the goal attribution (deep link to /goals/g-race) and the
     // cadence·duration detail appear; aria-expanded flips true.
@@ -168,11 +173,13 @@ test.describe("/playground/active-dashboard — schedule-row expand/collapse (CS
     await expect(cadence).toBeVisible();
     await expect(cadence).toContainText("40 min");
 
-    // COLLAPSE again: both retract and aria-expanded returns to false.
+    // COLLAPSE again: both retract (hidden once more) and aria-expanded returns
+    // to false. Under the harness's reduced-motion context the transition is
+    // disabled, so the retract is instant and this needs no settle wait.
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(goalLink).toHaveCount(0);
-    await expect(cadence).toHaveCount(0);
+    await expect(goalLink).toBeHidden();
+    await expect(cadence).toBeHidden();
   });
 });
 

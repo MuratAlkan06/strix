@@ -237,20 +237,24 @@ function TaskRow({
           className="-my-1 flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           {/* Collapsed: the parent-goal color dot rides beside the title so
-              multi-goal schedules stay distinguishable at a glance; when
-              expanded the dot drops to the goal-attribution line below. The dot
-              itself is aria-hidden (same as GoalChip's), so the goal name is
-              carried for AT by the sr-only pairing after the title — color is
-              never the sole signal (§11). */}
-          {!expanded && (
-            <span
-              aria-hidden="true"
-              className="size-2 shrink-0 rounded-full ring-1 ring-foreground/10"
-              style={{
-                backgroundColor: `var(--goal-color-${row.goalColorIndex})`,
-              }}
-            />
-          )}
+              multi-goal schedules stay distinguishable at a glance; expanded,
+              the dot drops to the goal-attribution line below — but its slot
+              HERE is kept (visibility:hidden, not unmounted), reserving the
+              exact horizontal box so the title's x-position is identical in
+              both states: no left-teleport on toggle (§7 — nothing jumps; the
+              drop reads clean, CS-11 motion fix). The dot is aria-hidden (same
+              as GoalChip's), so the goal name is carried for AT by the sr-only
+              pairing after the title — color is never the sole signal (§11). */}
+          <span
+            aria-hidden="true"
+            className={cn(
+              "size-2 shrink-0 rounded-full ring-1 ring-foreground/10",
+              expanded && "invisible",
+            )}
+            style={{
+              backgroundColor: `var(--goal-color-${row.goalColorIndex})`,
+            }}
+          />
           <span
             className={cn(
               "min-w-0 flex-1 text-sm leading-snug transition-colors",
@@ -272,16 +276,32 @@ function TaskRow({
           />
         </button>
       </div>
-      {/* Expanded disclosure (aria-controls target): the goal attribution
-          (dot + NAME — the deep link) over the cadence·duration detail. */}
-      {expanded && (
-        <div id={detailsId}>
-          <div className={cn("flex items-center px-2", checkable && "pl-10")}>
-            <GoalNameLink row={row} />
+      {/* Disclosure (aria-controls target): the goal attribution (dot + NAME —
+          the deep link) over the cadence·duration detail. Always mounted so the
+          reveal/retract is a real height transition — the grid-rows 0fr↔1fr
+          idiom, ≤200ms ease-out (enter easing, §7) — rather than an instant
+          pop; the id target is therefore always present, so aria-controls never
+          dangles. Collapsed, the content is visibility-hidden (invisible):
+          dropped from the a11y tree AND the tab order (no focusable ghost link),
+          and clipped to zero height by the overflow-hidden grid item — so the
+          collapsed layout, its a11y tree, and the verify:ui baselines are all
+          unchanged. motion-reduce turns the transition off (instant reveal —
+          the §7 reduced-motion map). */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className={cn("overflow-hidden", !expanded && "invisible")}>
+          <div id={detailsId}>
+            <div className={cn("flex items-center px-2", checkable && "pl-10")}>
+              <GoalNameLink row={row} />
+            </div>
+            <TaskDetails row={row} checkable={checkable} />
           </div>
-          <TaskDetails row={row} checkable={checkable} />
         </div>
-      )}
+      </div>
     </li>
   );
 }
