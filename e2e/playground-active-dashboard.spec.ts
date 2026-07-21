@@ -136,6 +136,53 @@ test.describe("/playground/active-dashboard — active DAWN dashboard", () => {
   });
 });
 
+test.describe("/playground/active-dashboard — schedule-row expand/collapse (CS-11)", () => {
+  // "Zone-2 run" is TODAY's weekly session (goal g-race "Half marathon",
+  // weekday Wed, 40 min). Scope every assertion to its own <li> — the goal
+  // "Half marathon" also owns always-visible due rows + the hero countdown, so
+  // an unscoped goal-link query would match those regardless of row state.
+  test("collapsed hides the goal attribution + cadence; expanding reveals both; aria-expanded tracks state", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE, { waitUntil: "networkidle" });
+
+    const row = page
+      .locator("li")
+      .filter({ has: page.getByRole("button", { name: /Zone-2 run/ }) });
+    const toggle = row.getByRole("button", { name: /Zone-2 run/ });
+    const goalLink = row.getByRole("link", { name: "Half marathon" });
+    const cadence = row.getByText(/Every Wed/);
+
+    // COLLAPSED: the row body toggle is present and closed; the goal deep-link
+    // and the cadence·duration line are HIDDEN. The disclosure is always
+    // mounted now (so the reveal/retract can be a real height transition — CS-11
+    // motion fix), but collapsed it is visibility-hidden: dropped from the a11y
+    // tree and the tab order and clipped to zero height. toBeHidden() asserts
+    // that non-visibility/non-accessibility (the functional intent) regardless
+    // of the hide technique — a ghost link would be caught here.
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(goalLink).toBeHidden();
+    await expect(cadence).toBeHidden();
+
+    // EXPAND: the goal attribution (deep link to /goals/g-race) and the
+    // cadence·duration detail appear; aria-expanded flips true.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(goalLink).toBeVisible();
+    await expect(goalLink).toHaveAttribute("href", "/goals/g-race");
+    await expect(cadence).toBeVisible();
+    await expect(cadence).toContainText("40 min");
+
+    // COLLAPSE again: both retract (hidden once more) and aria-expanded returns
+    // to false. Under the harness's reduced-motion context the transition is
+    // disabled, so the retract is instant and this needs no settle wait.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(goalLink).toBeHidden();
+    await expect(cadence).toBeHidden();
+  });
+});
+
 test.describe("/playground/active-dashboard — accomplished + Friday prompt (phase 2)", () => {
   for (const state of [
     "accomplished",

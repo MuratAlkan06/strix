@@ -68,7 +68,9 @@ export default async function Home() {
         />
 
         <div className="absolute left-5 top-5 flex items-center gap-2">
-          <Emblem treatment="2-tone" className="size-7 text-foreground" title="Strix" />
+          {/* Decorative: the adjacent "Strix" wordmark names the brand, so the
+              mark is aria-hidden (no SR "Strix, Strix"). */}
+          <Emblem treatment="2-tone" className="size-7 text-foreground" decorative />
           <span className="font-heading text-sm font-medium tracking-tight text-foreground/90">
             Strix
           </span>

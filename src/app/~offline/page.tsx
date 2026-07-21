@@ -36,10 +36,12 @@ export default function OfflinePage() {
   return (
     <main className="flex w-full flex-1 flex-col items-center justify-center gap-8 p-6">
       <div className="flex items-center gap-2">
+        {/* Decorative: the adjacent "Strix" wordmark names the brand, so the
+            mark is aria-hidden (no SR "Strix, Strix"). */}
         <Emblem
           treatment="2-tone"
           className="size-7 text-foreground"
-          title="Strix"
+          decorative
         />
         <span className="font-heading text-sm font-medium tracking-tight text-foreground/90">
           Strix

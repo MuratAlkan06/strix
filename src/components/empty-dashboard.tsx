@@ -49,10 +49,12 @@ export function EmptyDashboard() {
         />
 
         <div className="absolute left-4 top-4 flex items-center gap-2">
+          {/* Decorative: the adjacent "Strix" wordmark names the brand, so the
+              mark is aria-hidden (no SR "Strix, Strix"). */}
           <Emblem
             treatment="2-tone"
             className="size-7 text-foreground"
-            title="Strix"
+            decorative
           />
           <span className="font-heading text-sm font-medium tracking-tight text-foreground/90">
             Strix
