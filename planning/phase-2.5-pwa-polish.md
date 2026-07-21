@@ -1,6 +1,6 @@
 # Phase 2.5 — PWA polish
 
-**STATUS: code-complete 2026-06-13 (`v0.5.0-rc.1`).** All build slices S1–S9 merged; every automated gate green (manifest `errors:[]`, SW registers in dev+prod, offline e2e, analytics confirmed landing, axe a11y 100). The **formal gate to Phase 3 remains OPEN**, pending the deployed-preview installability check (gate 4's HTTPS/DevTools half) and the real-device install matrix in LAUNCH_CHECKLIST.md (owner-run). Do not start Phase 3 until both pass.
+**STATUS: released 2026-07-21 (`v0.5.0`, tagged).** All build slices S1–S9 merged; every automated gate green (manifest `errors:[]`, SW registers in dev+prod, offline e2e, analytics confirmed landing, axe a11y 100). The deployed-preview installability check (gate 4's HTTPS/DevTools half) **PASSED 2026-07-19** — evidence in LAUNCH_CHECKLIST.md §"v0.5.0 Launch Evidence". The real-device install matrix was owner-accepted as **MacBook-only for v0.5.0**; the full 4-device mobile matrix is **deferred to the Phase-3 prod-cutover gate (#70)**. Phase-3 commerce remains gated by **#70**.
 
 **Goal:** §9 quality bar #6: "Install to home screen on iOS or Android and have it feel native enough to forget it's a webpage." This is the polish gate that prevents shipping a "kind of native" experience into commerce.
 
