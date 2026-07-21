@@ -114,3 +114,20 @@ This is the real-device sign-off for the Phase 2.5 "Installable PWA" formal gate
 - **Durable verdict** (the pass/fail table filled in per device + cell, and the project-lead sign-off) → committed **here**, in this file. This committed table is the authoritative record; the raw media is supporting evidence held outside git.
 
 **Sign-off owner:** project lead.
+
+---
+
+## v0.5.0 Launch Evidence — automated checks + owner sign-off
+
+Results captured for **v0.5.0** against the gates above. This release certifies native-feel on the `*.vercel.app` **preview** only; the full 4-device matrix (gates 1–10) is **not** claimed here — see the honest gap below. Raw automated logs and captures stay in the uncommitted `strix-phase2.5-evidence/` sibling; this table is the durable verdict.
+
+| Gate | Scope | Result | Detail |
+|------|-------|--------|--------|
+| **4 — Installability (automated half)** | Deployed preview, via CDP | **PASS 2026-07-19** | `Page.getAppManifest` returned `errors: []`; all required manifest fields present; the 192/512 `any`+`maskable` icons all downloadable; service worker registered at scope `/` with a fetch handler; served over HTTPS with HSTS. Re-spot-checked **2026-07-21** on the PR #89 preview build — manifest + `sw.js` fetch handler intact. |
+| **9.5 — Sign-out cache purge (mechanism)** | Live preview | **PASS 2026-07-19** | A single `purgeClientCaches()` call emptied **all** Cache Storage — serwist precache + `strix-dashboard-*` runtime caches — and cleared `strix.install.*` localStorage. No IndexedDB in use. Sign-out awaits the purge before redirecting. |
+| **N1 — Sign-out offline-data isolation (owner-run)** | Owner device — MacBook (Chrome) | **PASS 2026-07-20 / 2026-07-21** | PWA installed, signed out while online, network disabled, reopened → clean shell, no prior-user data visible. |
+| **Demo-fix re-demo (owner-run)** | Owner device — MacBook | **PASS** | Owner re-verified the demo-finding fixes shipped in PR #89: v6a in-app brand mark (CS-10) and the schedule-row expand/collapse rework with goal color coding (CS-11). |
+
+**Honest gap — device coverage.** The 4-device mobile matrix (iPhone 15 Pro / iPhone SE 3 / Pixel 8 / Galaxy S22) defined in the table above was **NOT run for v0.5.0**. The owner accepted **MacBook-only** coverage for this release. The full real-device mobile matrix is **deferred to the Phase-3 prod-cutover gate** (issue **#70**), where it is re-run against the production origin per the Phase-3 commerce exit gate at the top of this file.
+
+**Sign-off owner:** project lead (owner) — v0.5.0 evidence recorded 2026-07-21.
