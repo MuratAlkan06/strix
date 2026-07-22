@@ -353,3 +353,186 @@ Automated (Vitest):
 - **Payment-failure dunning**: `invoice.payment_failed` does not immediately archive; subscription transitions to `past_due`. Only `customer.subscription.deleted` with `cancellation_details.reason='payment_failed'` triggers `applyPaymentFailureArchive`.
 - **Activity heuristic in `applyPaymentFailureArchive`**: with 4 active goals sorted as `[A: 5 completions in last 30d, B: 1, C: 0, D: 2]`, keeps `[A, D, B]`, archives `[C]`. With all goals at 0 completions in the 30-day window, falls back to `created_at DESC`. A goal with 100 completions older than 30 days has `last_completion_at = NULL` per the window rule and ranks below any goal with ≥1 completion in the window.
 - **Archived-goal reactivation**: clicking Restore on an archived goal opens the replan diff with rebased milestone dates relative to `now()`; accepting flips status to `active` and clears archive metadata; calls `checkAndIncrement('replan')` (consumes Free-tier replan quota; pass-through for Pro/Max); blocks with a cap error if `active_goals >= tier_cap`.
+
+## Slice plan (scoped 2026-07-20, issue #92)
+
+Sequencing for the Phase-3 build. Every slice's acceptance criteria live in the
+"Items to build" sections above and the numbered **§Verification** items (1–19)
++ the Automated (Vitest) list; each slice below points into the exact items it
+must pass. Cross-refs: the production cutover plan
+(`docs/deploy/prod-cutover-plan.md`) owns the gate/env sequencing; the security
+record (`docs/security/pr-71-retroactive-review.md`) owns slice **S0**.
+
+**Cutover-marker rule (Tier A, `docs/deploy/prod-cutover-plan.md`):** the CI
+tripwire (`scripts/check-prod-cutover-gate.mjs`) fails any `stripe` import
+without the committed `.prod-cutover-verified` marker. So **S0/S1 land before
+the cutover** (no Stripe import); **S2 onward land after it**. Stance:
+cutover-before-any-Stripe-merge — don't fight the tripwire (Open question 3 in
+the cutover plan).
+
+### S0 — Security hardening (pre-cutover)
+
+- **Value:** closes the two [cutover-blocking] Mediums from the PR #71 review so
+  the prod migration + env-flip are safe.
+- **Scope:** the 4 required fixes + optional hardening in
+  `docs/security/pr-71-retroactive-review.md` — migration prod-target
+  confirmation in `src/db/migrate.ts`; the `INNGEST_DEV`-while-`VERCEL` runtime
+  guard; playground route delete/block [pre-public-launch]; `pnpm.overrides`
+  [pre-public-launch]; optional `import "server-only"` in `src/db/client.ts`.
+- **Small code slice, no Stripe import** → passes the tripwire; startable now.
+- **Blocking subset:** **only items 1–2** — the migration **prod-target
+  confirmation** (`src/db/migrate.ts`) and the **`INNGEST_DEV`-while-`VERCEL`**
+  runtime guard — gate **Track C migration + the flip**. Playground removal and
+  `pnpm.overrides` are **[pre-public-launch]** opportunistic work, **not
+  cutover-blocking**.
+- **Gates:** none external. **Blocks:** Track C migration + the Phase-3 flip
+  (`docs/deploy/prod-cutover-plan.md`).
+- **Acceptance:** the two cutover-blocking guards throw on the wrong target /
+  wrong env; unit-tested per the review. No §Verification item (net-new
+  security slice) — acceptance is the review's fix list.
+
+### S1 — Free-tier usage caps
+
+- **Value:** the Free tier becomes enforceable and revenue leakage stops.
+- **Scope:** retrofit `checkAndIncrement` / `refundUsage` into
+  `/api/ai/plan` + `/api/ai/replan`; per-tier goal cap in `POST /api/goals`;
+  the cap-hit modal (two-card Pro/Max compare) with **stubbed** CTAs (no
+  Checkout yet).
+- **Gates:** **none external — no Stripe import**, startable **before**
+  cutover. Depends on the "Anthropic-call error-handling contract" design input
+  below.
+- **Acceptance:** §Verification **1** (plan cap + atomic concurrent), **2**
+  (goal-cap on save); Automated — `checkAndIncrement` limits, concurrent
+  N=10, quota refund (captured-period, floor-at-0, structural_edit/Restore),
+  goal-cap on save, monthly counter reset. "Items to build" → Free-tier usage
+  caps, Upgrade prompt on cap hit, Goal-cap enforcement. **Scope boundary:** S1
+  owns the cap-hit **modal render** + the `free_tier_cap_hit` event **only** —
+  **functional CTA wiring to Checkout is S3 (Switch to Pro) / S4 (Start Max
+  trial)**.
+
+### S2 — Billing foundation (**first Stripe import**)
+
+- **Value:** the Stripe integration substrate — nothing user-visible, but every
+  later slice sits on it.
+- **Scope:** Stripe client; `lib/billing/config.ts` (price IDs from env); the
+  `/api/webhooks/stripe` endpoint — signature verify, idempotency log
+  (`stripe_webhook_events`), user-missing / soft-deleted guards, and the
+  deleted-event routing **skeleton**; the **runtime Stripe-live-key guard**
+  (ADR-0002 lines 187–188 — one of the **three** enforcement points of the
+  blocking Phase-3 exit gate, alongside the CI tripwire and issue #70). Explicit
+  semantics: **throw unless `STRIX_PROD_CUTOVER_VERIFIED=1`, but only when
+  `STRIPE_SECRET_KEY` is a live `sk_live_` key** — a test-mode `sk_test_` key
+  **passes**, so preview / local / CI are unaffected.
+- **Gates:** **#10 test price IDs** (Tier A) + the **cutover marker** (this is
+  the first `stripe` import → tripwire). Depends on S0 + the flip.
+- **Acceptance:** §Verification **17** (unsigned → 400; idempotent replay),
+  **18** (non-existent customer → 200 no-op); Automated — signature
+  verification, idempotency, 200-no-op-on-missing-user, soft-deleted selective
+  guard, **and the runtime live-key guard (throws on an `sk_live_` key without
+  `STRIX_PROD_CUTOVER_VERIFIED=1`; passes on `sk_test_`)**. "Items to build" →
+  Stripe webhook signature verification, Stripe webhooks.
+
+### S3 — Pro signup (no trial)
+
+- **Value:** the first real revenue path — Pro subscriptions.
+- **Scope:** Pro Checkout (no `trial_period_days`); `customer.subscription.created`
+  (status=active) → `tier='pro'`; wire the cap-modal "Switch to Pro" CTA.
+- **Gates:** **S2**. **Live use is Tier B** (full cutover + #8/#9 live). Add the
+  `automatic_tax: { enabled: true }` Checkout param (design input below).
+- **Acceptance:** §Verification **9** (Switch to Pro → tier='pro',
+  `subscription_started`); "Items to build" → Pro signup (no trial), Upgrade
+  prompt on cap hit.
+
+### S4 — Max trial
+
+- **Value:** the trial-with-card acquisition path (Max only).
+- **Scope:** trial Checkout (`trial_period_days: 7`, `payment_method_collection:
+  "always"`) + ToS-consent collection; silent-expiry **conversion**
+  (`updated` trialing→active); trial reminder (Inngest `trialReminderTomorrow` +
+  Resend); the **minimal `lib/email/send.ts` transactional-send helper** (pulled
+  forward from Phase 4 for the reminder email — see the cutover plan's env
+  inventory + doc-reconciliation note); payment-failure / dunning
+  (`invoice.payment_failed` → `past_due`, banner).
+- **Gates:** **S2**; **#8 published ToS URL** (the trial slice's done-when needs
+  it even in test mode — `terms_of_service_url` /
+  `consent_collection.terms_of_service`); **#15** Resend records for reminder
+  deliverability (pulled forward into Phase 1 of the cutover — see the cutover
+  plan). **Live use is Tier B.** Add `consent_collection.terms_of_service`
+  Checkout param (design input below).
+- **Acceptance:** §Verification **3** (start trial), **7** (trial reminder),
+  **14** (silent conversion), **16** (payment-failure recovery), and the
+  `invoice.payment_failed` half of **15**; Automated — silent-expiry
+  conversion, payment-failure dunning (the `past_due` transition). "Items to
+  build" → Trial-with-card signup, Trial reminder, Payment-failure handling.
+
+### S5 — Cancel / downgrade-and-archive
+
+- **Value:** click-to-cancel-compliant offboarding with restorable archive.
+- **Scope:** the downgrade-and-archive selection screen; deferred execution for
+  **trial** cancels (write `pending_archive_goal_ids`, `cancel_at_period_end`);
+  `applyPendingArchive` + `applyPaymentFailureArchive` Inngest functions; the
+  **full** deleted-event routing (superseded / payment_failed / user-cancel /
+  plain-sync); the trial-expired banner.
+- **Gates:** **S3 + S4** (needs both a paid path and a trial path to cancel).
+- **Acceptance:** §Verification **4**, **5**, **6**, **8**, **8.1**, **8.2**,
+  and the archive half of **15** (activity heuristic keeps A/D/B, archives C);
+  Automated — deleted-event routing, `applyPendingArchive`, activity heuristic,
+  trial-resume clears pending. "Items to build" → Downgrade-and-archive
+  selection screen, Trial-cancel deferred-execution flow, Deleted-event
+  routing, applyPaymentFailureArchive, Trial-expired banner.
+
+### S6 — Restore + Max→Pro + refunds + billing settings
+
+- **Value:** the long tail — reactivation, tier moves, refunds, the settings
+  surface that ties them together.
+- **Scope:** archived-goal Restore (replan `trigger='structural_edit'`,
+  reactivation payload); Max→Pro transition (pin mechanics — design input
+  below); annual prorated refunds (server-side re-check, goal-cap
+  reconciliation first); the `app/(settings)/billing` page.
+- **Gates:** **S5**. **Live use is Tier B.**
+- **Acceptance:** §Verification **9.5** (Restore), **10** (annual refund →
+  reconcile-then-refund → plain-sync), **11** (day-31 → 403), **12** (monthly →
+  403), **13** (Max→Pro "what you're losing" screen), and **19** (the full
+  PostHog taxonomy across scenarios); Automated — refund eligibility
+  (monthly/annual/day-31), archived-goal reactivation, Max→Pro. "Items to
+  build" → Archived-goal reactivation, Max → Pro transition, Billing settings,
+  Custom cancel.
+
+### Design inputs to resolve before their slice
+
+Under-specified items in the plan above; resolve each in its slice's design step
+**before** implementation, not during.
+
+- **Anthropic-call error-handling contract** (blocks **S1** refund logic) —
+  Phase 1's plan endpoint specifies **none**. Define the failure classes
+  (transport, timeout, Zod-validation 502) so `refundUsage` has a hook per
+  class.
+- **Zod-failure refund rate-limit threshold** (**S1**) — "rate-limit the refund
+  for repeated Zod failures" is **untestable as written**; pin a concrete
+  threshold + window.
+- **Max→Pro mechanics** (**S6**) — in-place `subscription.update` (swap price,
+  end trial → `updated` event, no ordering race) **vs** cancel+create
+  (`superseded_at`). Decide in the S6 design; **evaluate against the Stripe test
+  clock**. `superseded_at` stays in the schema for any cancel+create path
+  regardless.
+- **Checkout params missing from the phase plan** — `automatic_tax: { enabled:
+  true }` (both flows) and `consent_collection: { terms_of_service: "required" }`
+  (trial flow). Add to the **S3 / S4** acceptance criteria.
+- **`invoice.payment_succeeded` handler behavior** — listed in "Stripe webhooks"
+  but its handler behavior is **unspecified**. Pin it (renewal-receipt / no-op /
+  state-sync) in the **S4** or **S5** design.
+- **Mid-trial "Edit selection" flow** — billing settings offers "Edit
+  selection" for a pending deferred cancel, but the flow is **unspecified**.
+  Pin it in the **S5** design.
+- **Phase-3 env-var inventory** — `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+  the 4 price IDs, `STRIX_PROD_CUTOVER_VERIFIED` — **consolidated in the cutover
+  plan** (`docs/deploy/prod-cutover-plan.md` → "Phase-3 commerce env
+  inventory"). Reference it; do not re-inventory here.
+- **Cap-hit modal two-card layout** — needs a **design-reviewer gate** per repo
+  convention (ADR-0002 lists design-reviewer APPROVE as a gate). Route the
+  **S1** modal through it.
+- **`canceled_at` write-once is a convention, not a DB constraint** (**S5**) —
+  the phase text above ("write-once — schema enforces", Trial-cancel
+  deferred-execution flow) means a **handler-enforced convention** documented in
+  a `schema.ts` comment, **not** a DB constraint; S5's cancel/resume handlers
+  own it (resume sets `canceled_at = NULL` — the single allowed exception).
