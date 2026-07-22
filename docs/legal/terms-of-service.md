@@ -10,7 +10,7 @@
 |---|---|
 | **[PLACEHOLDER: entity name]** | The legal entity that operates Strix (full registered name and form) |
 | **[PLACEHOLDER: governing law]** | Governing law and venue/jurisdiction clause |
-| **[PLACEHOLDER: production domain]** | The production domain where Strix and these terms are published |
+| **joinstrix.com** | The production domain where Strix and these terms are published |
 | **[PLACEHOLDER: contact address]** | Registered postal address for legal notices |
 | **[PLACEHOLDER: contact email]** | Support / legal contact email |
 | **[PLACEHOLDER: effective date]** | Set when the final reviewed version is published |
@@ -22,7 +22,7 @@
 
 ## 1. Who we are
 
-Strix is operated by **[PLACEHOLDER: entity name]** ("Strix," "we," "us"). These terms are an agreement between you and **[PLACEHOLDER: entity name]** governing your use of the Strix application at **[PLACEHOLDER: production domain]** and any related services (together, "the service").
+Strix is operated by **[PLACEHOLDER: entity name]** ("Strix," "we," "us"). These terms are an agreement between you and **[PLACEHOLDER: entity name]** governing your use of the Strix application at **joinstrix.com** and any related services (together, "the service").
 
 By creating an account or using the service, you agree to these terms. If you do not agree, do not use the service.
 
@@ -106,7 +106,7 @@ We may change prices. If we do, we will give you advance notice, and the new pri
 
 ## 6. Your content
 
-You retain ownership of the content you provide to Strix — goal descriptions, intake conversations, check-in notes, and everything else you write. You grant us the license needed to operate the service: to store your content, process it (including sending it to our AI provider to generate your plans), display it back to you, and include it in your data export. We do not sell your content or use it for advertising. How we handle personal data is described in the Privacy Policy at **[PLACEHOLDER: production domain]**/privacy.
+You retain ownership of the content you provide to Strix — goal descriptions, intake conversations, check-in notes, and everything else you write. You grant us the license needed to operate the service: to store your content, process it (including sending it to our AI provider to generate your plans), display it back to you, and include it in your data export. We do not sell your content or use it for advertising. How we handle personal data is described in the Privacy Policy at **joinstrix.com**/privacy.
 
 ## 7. Acceptable use
 
