@@ -108,6 +108,11 @@ describe("applyConsent — reconcile the live SDK to a value", () => {
     client.applyConsent("granted");
 
     expect(mockPosthog.init).toHaveBeenCalledWith(TOKEN, expect.any(Object));
+    // Session replay stays off: consent copy discloses usage events only (PR #100 finding).
+    expect(mockPosthog.init).toHaveBeenCalledWith(
+      TOKEN,
+      expect.objectContaining({ disable_session_recording: true }),
+    );
     expect(mockPosthog.opt_in_capturing).toHaveBeenCalledWith({
       captureEventName: false,
     });

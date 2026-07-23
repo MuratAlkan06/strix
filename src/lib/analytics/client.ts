@@ -54,6 +54,8 @@ export function initPostHog(): void {
       process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com",
     capture_pageview: false,
     autocapture: false,
+    // consent copy discloses usage events only — session replay would need its own disclosure (design-review finding, PR #100)
+    disable_session_recording: true,
     person_profiles: "identified_only",
     // Defence-in-depth: even in the same-tick window before the opt-in below,
     // capturing stays off until we explicitly opt in.
