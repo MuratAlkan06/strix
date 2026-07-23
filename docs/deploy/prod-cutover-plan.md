@@ -103,7 +103,10 @@ independent and run concurrently.
 - The owner **migrates locally against the DIRECT host only** — `pnpm
   db:migrate` reads `DIRECT_DATABASE_URL` and refuses a `-pooler` host
   (ADR-0002 Decision 1; `src/db/migrate.ts` `resolveMigrationUrl`). A build
-  must never mutate prod schema.
+  must never mutate prod schema. The runner also **confirms the target host**
+  before applying (S0; `assertMigrationTarget`) — retype the echoed host on a
+  TTY, or set `STRIX_MIGRATE_TARGET` to the intended prod host for a
+  non-interactive run.
 - **Precondition:** the **S0 migration-target guard** (see Security gates) must
   be **merged first** — no prod migration runs until the migrate runner asserts
   it is pointed at the intended prod host.
@@ -265,26 +268,41 @@ Only after Phase 4 is green.
 
 ### [cutover-blocking] S0 hardening — MERGE BEFORE Track C migration + Phase 3 flip
 
-The **S0** slice (see the slice plan) must land before any prod migration or the
-env-flip:
+The **S0** slice (see the slice plan) lands these before any prod migration or
+the env-flip. Both cutover-blocking guards are implemented and unit-tested:
 
-1. **Prod-target confirmation in `src/db/migrate.ts`** — echo the **resolved
-   host only** (never the full URL with credentials) and require an explicit
-   confirm or a `STRIX_MIGRATE_TARGET` allowlist match before running. Closes
-   the CS-7 "no env-identity assertion on the migration target" Medium.
-2. **Code guard** that throws when `INNGEST_DEV` is truthy while `VERCEL` is
-   set — turns the ADR-0002 Decision 6 config-only rule into a hard runtime
-   assertion (closes the adjacent `/api/inngest` Medium).
-3. **(optional)** `import "server-only"` at the top of `src/db/client.ts`.
+1. **Prod-target confirmation in `src/db/migrate.ts`** — `main()` echoes the
+   **resolved host only** (never the full URL with credentials), then
+   `assertMigrationTarget` requires a `STRIX_MIGRATE_TARGET` allowlist match
+   (exact hostname; comma-separated for multiple) **or**, on a TTY, an
+   interactive retype-the-host confirm; a non-interactive run without the
+   allowlist refuses to migrate. Closes the CS-7 "no env-identity assertion on
+   the migration target" Medium.
+2. **Code guard** (`assertInngestDevAbsentOnVercel`, called at `/api/inngest`
+   module scope) throws when `INNGEST_DEV` is set while `VERCEL` is present —
+   turns the ADR-0002 Decision 6 config-only rule into a hard runtime
+   assertion (closes the adjacent `/api/inngest` Medium). A misconfigured
+   Vercel deploy fails at import, not at the first unsigned request.
+3. **`import "server-only"`** at the top of `src/db/client.ts` (optional
+   hardening — landed).
 
 ### [pre-public-launch] (not cutover-blocking; before public traffic)
 
 - **Playground routes:** delete or route-block `src/app/playground/*` and drop
   them from the `src/proxy.ts` public list.
-- **Dependency overrides:** add `pnpm.overrides` for `axios >=1.18.0`,
-  `brace-expansion >=5.0.7`, `body-parser >=2.3.0` (12 new transitive
-  advisories, low reachability). Slots into the existing `pnpm.overrides` block
-  in `package.json`.
+- **Dependency overrides:** `pnpm.overrides` carries `axios >=1.18.0` (added in
+  S0). `body-parser` already resolves at `2.3.0` (PR #95), so it needs no
+  override. The `brace-expansion >=5.0.7` override is **intentionally omitted**
+  (closed by natural resolution): a
+  global override forces the copy under `minimatch@3` (the `eslint` /
+  `@eslint/config-array` chain) from `1.x` to `5.x`, and `minimatch@3` is
+  incompatible with `brace-expansion` v2+ (`require('brace-expansion')` is no
+  longer callable → `pnpm lint` crashes with `expand is not a function`).
+  Per the security-dependency-reviewer ruling (2026-07-22) **no override is
+  needed** — both resolved copies (`1.1.16` dev-only/lint-time and `5.0.7` on the
+  prod path via `minimatch@10`) carry the CVE-2026-13149 fix and `pnpm audit` is
+  clean; a future `eslint`-chain major bump retires `minimatch@3` naturally. See
+  the review addendum in `docs/security/pr-71-retroactive-review.md`.
 
 ---
 

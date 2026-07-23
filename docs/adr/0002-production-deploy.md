@@ -101,6 +101,10 @@ Stripe) is **Phase 3**.
   triggers. Verify with an **unsigned POST → expect 401**. (The route is
   Clerk-public by design in `src/proxy.ts`; the SDK verifies the signing key
   itself, so the signature check is the only gate.)
+  - **Addendum (S0):** this is now a **hard runtime assertion**, not just a
+    config rule — `assertInngestDevAbsentOnVercel` runs at `/api/inngest`
+    module scope and throws when `INNGEST_DEV` is set (any value) while
+    `VERCEL` is present, failing a misconfigured deploy at import.
 
 ### 7. Preview database — one shared preview Neon DB (D3)
 
