@@ -62,7 +62,7 @@ export function AnalyticsConsentCardView({
         <div className="flex items-center justify-between gap-4">
           <Label
             htmlFor={SWITCH_ID}
-            className="flex min-h-11 cursor-pointer flex-col justify-center gap-0.5"
+            className="flex min-h-11 cursor-pointer flex-col items-start justify-center gap-0.5"
           >
             <span className="text-sm font-medium text-foreground">
               Product analytics
