@@ -17,6 +17,13 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
 import { inngestFunctions } from "@/lib/inngest/functions";
+import { assertInngestDevAbsentOnVercel } from "@/lib/inngest/env-guard";
+
+// Fail a misconfigured Vercel deploy at import time rather than serving an
+// unsigned-callable cron endpoint: INNGEST_DEV truthy on Vercel skips the
+// signature check (ADR-0002 Decision 6 / B1). Runs at module scope so the
+// throw happens on first import (build / cold start), not per-request.
+assertInngestDevAbsentOnVercel();
 
 // Background jobs (archival sweeps, monthly resets) can run well past the
 // default serverless wall clock. Allow up to 300s (ADR-0002 CS-3). Valid on
