@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { AnalyticsConsentCard } from "./analytics-consent-card";
 import { SignOutButton } from "./sign-out-button";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,8 @@ export default function SettingsPage() {
           <SignOutButton />
         </CardContent>
       </Card>
+
+      <AnalyticsConsentCard />
     </main>
   );
 }

@@ -3,8 +3,10 @@
 /**
  * use-local-storage.ts — the install-affordance client store (phase 2.5, S8).
  *
- * The install banner is the first and only feature that keeps state in
- * localStorage. Two values, both gating a single dismissible banner:
+ * The install banner is the first feature to keep PER-USER state in
+ * localStorage (the #11 analytics-consent store, src/lib/analytics/consent.ts,
+ * later added a separate DEVICE-GLOBAL key). Two values here, both gating a
+ * single dismissible banner:
  *   - a per-user authenticated SESSION COUNT (banner needs ≥3 sessions), and
  *   - a per-user DISMISSED flag (banner never shows again once dismissed).
  *
