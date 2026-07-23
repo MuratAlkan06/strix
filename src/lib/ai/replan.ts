@@ -28,7 +28,7 @@
  */
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 
-import { getClient } from "./client";
+import { getClient, AI_REQUEST_OPTIONS } from "./client";
 import { MODEL_SONNET } from "./models";
 import { replanSystem } from "./prompts/replan";
 import { INTENSITY_LEVELS } from "./intake-schema";
@@ -255,6 +255,7 @@ export function buildReplanMessages(args: GenerateReplanArgs): MessageParam[] {
  */
 export async function generateReplan(
   args: GenerateReplanArgs,
+  signal?: AbortSignal,
 ): Promise<ReplanDiff> {
   const client = getClient();
   if (!client) {
@@ -270,13 +271,16 @@ export async function generateReplan(
   );
 
   const startedAt = Date.now();
-  const message = await client.messages.parse({
-    model: MODEL_SONNET,
-    max_tokens: MAX_TOKENS,
-    system: replanSystem(),
-    messages: buildReplanMessages(args),
-    output_config: { format: replanOutputFormat() },
-  });
+  const message = await client.messages.parse(
+    {
+      model: MODEL_SONNET,
+      max_tokens: MAX_TOKENS,
+      system: replanSystem(),
+      messages: buildReplanMessages(args),
+      output_config: { format: replanOutputFormat() },
+    },
+    { ...AI_REQUEST_OPTIONS, signal },
+  );
 
   logAiUsage(
     toUsageLog("replan", MODEL_SONNET, message.usage, Date.now() - startedAt),

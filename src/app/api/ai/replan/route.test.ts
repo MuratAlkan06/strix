@@ -38,18 +38,37 @@ vi.mock("@clerk/nextjs/server", () => ({
 
 const callOrder: string[] = [];
 
-const checkAndIncrementCalls: Array<{ userId: string; op: string }> = [];
-vi.mock("@/lib/limits", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/limits")>();
-  return {
-    ...actual,
-    checkAndIncrement: vi.fn(async (userId: string, op: string) => {
-      callOrder.push("checkAndIncrement");
-      checkAndIncrementCalls.push({ userId, op });
-      return { ok: true } as const;
-    }),
-  };
-});
+// The metered wrapper's quota gate is stubbed here — the real atomic UPDATE is
+// proven in usage.test.ts / usage.integration.test.ts. checkAndIncrement's
+// per-test result drives ok / cap; refundUsage records refund-on-failure.
+const checkAndIncrementCalls: Array<{ userId: string; kind: string }> = [];
+const refundCalls: Array<{
+  userId: string;
+  kind: string;
+  periodStart: string;
+  mode: string;
+}> = [];
+let capResult:
+  | { ok: true; periodStart: string }
+  | { ok: false; cap: number; used: number } = {
+  ok: true,
+  periodStart: "2026-07-01",
+};
+vi.mock("@/lib/billing/usage", () => ({
+  checkAndIncrement: vi.fn(async (userId: string, kind: string) => {
+    callOrder.push("checkAndIncrement");
+    checkAndIncrementCalls.push({ userId, kind });
+    return capResult;
+  }),
+  refundUsage: vi.fn(
+    async (userId: string, kind: string, periodStart: string, mode: string) => {
+      refundCalls.push({ userId, kind, periodStart, mode });
+      return { refunded: true };
+    },
+  ),
+  NoLiveUserError: class NoLiveUserError extends Error {},
+  CAP_KIND_LABEL: { plan: "plan_generations", replan: "replans" },
+}));
 
 const loggedAiErrors: Array<{ op: string; err: unknown }> = [];
 vi.mock("@/lib/ai/log", async (importOriginal) => {
@@ -265,6 +284,8 @@ beforeEach(() => {
   scopedDbInstances = 0;
   callOrder.length = 0;
   checkAndIncrementCalls.length = 0;
+  refundCalls.length = 0;
+  capResult = { ok: true, periodStart: "2026-07-01" };
   generateCalls.length = 0;
   loggedAiErrors.length = 0;
   generateReplanImpl = async () => VALID_DIFF;
@@ -530,20 +551,37 @@ describe("POST /api/ai/replan — fill-vs-create", () => {
 // Quota stub ordering + prompt inputs
 // ---------------------------------------------------------------------------
 
-describe("POST /api/ai/replan — quota stub and generate args", () => {
-  it("awaits checkAndIncrement(userId,'replan') BEFORE the model call; never writes usage_counters", async () => {
+describe("POST /api/ai/replan — metered wrapper and generate args", () => {
+  it("meters checkAndIncrement(userId,'replan') BEFORE the model call; never writes usage_counters directly", async () => {
     const res = await post(weeklyBody);
     expect(res.status).toBe(200);
     expect(checkAndIncrementCalls).toEqual([
-      { userId: "user_test_1", op: "replan" },
+      { userId: "user_test_1", kind: "replan" },
     ]);
     expect(callOrder.indexOf("checkAndIncrement")).toBeLessThan(
       callOrder.indexOf("generateReplan"),
     );
+    // The route never touches usage_counters itself — the gate module owns it.
     const counterWrites = [...inserts, ...updates].filter(
       (w) => w.table === usage_counters,
     );
     expect(counterWrites).toHaveLength(0);
+    // Success → no refund.
+    expect(refundCalls).toHaveLength(0);
+  });
+
+  it("402 cap_hit JSON when the meter is exhausted — no model call, no refund", async () => {
+    capResult = { ok: false, cap: 2, used: 2 };
+    const res = await post(weeklyBody);
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual({
+      error: "cap_hit",
+      cap: 2,
+      used: 2,
+      kind: "replans",
+    });
+    expect(generateCalls).toHaveLength(0);
+    expect(refundCalls).toHaveLength(0);
   });
 
   it("passes the check-in feeling/notes as the trigger payload", async () => {

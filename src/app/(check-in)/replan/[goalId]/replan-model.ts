@@ -801,6 +801,11 @@ export function buildReplanPageModel(input: {
     colorIndex: input.goal.color_index,
   };
   const proposal = input.proposal;
+  // No proposal → the retry-friendly empty state. This ALSO covers the
+  // "generation failed" path (S1): the metered wrapper's onFailure deletes the
+  // stranded weekly-fill placeholder, so a failed generation lands here rather
+  // than on a dangling pending row — the user re-selects the goal in their
+  // check-in, which re-POSTs and recreates the placeholder.
   if (!proposal) return { mode: "none", goal };
 
   const generate =

@@ -21,7 +21,7 @@
 
 ### Replan flow
 
-- Endpoint: `POST /api/ai/replan` — accepts `goal_id`, `trigger` (`weekly_check_in | structural_edit`), and optional `weekly_check_in_id` or `structural_change` payload. **The endpoint calls `checkAndIncrement(userId, 'replan')` in Phase 3**; in Phase 2 this is a stub that always returns `{ ok: true }` so the endpoint shape is stable.
+- Endpoint: `POST /api/ai/replan` — accepts `goal_id`, `trigger` (`weekly_check_in | structural_edit`), and optional `weekly_check_in_id` or `structural_change` payload. **In Phase 3 the endpoint meters usage through the shared `runMeteredAi` wrapper (`src/lib/ai/metered.ts`), which owns the `checkAndIncrement`/`refundUsage` calls — routes never call them directly (S1, issue #96)**; in Phase 2 this was a stub `checkAndIncrement` that always returned `{ ok: true }` so the endpoint shape is stable.
 - Model: `claude-sonnet-4-6`. **Anthropic prompt caching on the long system prompt.** System prompt:
   - Reads goal + intake summary + current recurring_tasks/milestones/equipment + last 4 weeks of `task_completions` for adherence signal + the check-in feeling/notes or structural change.
   - **Intensity rule (spec §5 flag #2 + flag #6):** uses `goals.intensity_override` when explicitly set, otherwise falls back to `intake_summaries.confirmed_intensity`, otherwise to `users.intensity_preference`. State this clearly in the system prompt.
