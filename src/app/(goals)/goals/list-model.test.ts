@@ -5,7 +5,10 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { ACTIVE_GOAL_CAP } from "@/lib/goal-colors";
+import {
+  FREE_ACTIVE_GOAL_CAP,
+  PAID_ACTIVE_GOAL_CAP,
+} from "@/lib/goal-colors";
 import {
   buildGoalsListModel,
   type GoalRowLike,
@@ -107,40 +110,50 @@ describe("buildGoalsListModel — card composition", () => {
   });
 });
 
-describe("buildGoalsListModel — add tile", () => {
-  it("visible below the cap, previewing the gap-filled next color", () => {
-    // Used colors {0, 2, 3} → min available is 1.
+describe("buildGoalsListModel — add tile (per-tier cap, S1)", () => {
+  it("visible below the cap, previewing the gap-filled next color (Free)", () => {
+    // Used colors {0, 2} → min available is 1; 2 active < Free cap 3.
     const model = buildGoalsListModel(
-      [
-        goal({ color_index: 0 }),
-        goal({ color_index: 2 }),
-        goal({ color_index: 3 }),
-      ],
+      [goal({ color_index: 0 }), goal({ color_index: 2 })],
       [],
+      "free",
     );
     expect(model.addTileColorIndex).toBe(1);
   });
 
-  it("first goal preview is color 0", () => {
+  it("first goal preview is color 0 (default tier = free)", () => {
     expect(buildGoalsListModel([], []).addTileColorIndex).toBe(0);
   });
 
-  it("hidden at the cap (5 active)", () => {
-    const five = [0, 1, 2, 3, 4].map((i) => goal({ color_index: i }));
-    expect(five).toHaveLength(ACTIVE_GOAL_CAP);
-    expect(buildGoalsListModel(five, []).addTileColorIndex).toBeNull();
+  it("Free hides the tile at 3 active", () => {
+    const three = [0, 1, 2].map((i) => goal({ color_index: i }));
+    expect(three).toHaveLength(FREE_ACTIVE_GOAL_CAP);
+    expect(buildGoalsListModel(three, [], "free").addTileColorIndex).toBeNull();
   });
 
-  it("completed/archived goals do NOT count against the cap or palette in Phase 1", () => {
+  it("Pro/Max still show the tile at 3 active (cap 5)", () => {
+    const three = [0, 1, 2].map((i) => goal({ color_index: i }));
+    expect(buildGoalsListModel(three, [], "pro").addTileColorIndex).toBe(3);
+    expect(buildGoalsListModel(three, [], "max").addTileColorIndex).toBe(3);
+  });
+
+  it("Pro/Max hide the tile at 5 active", () => {
+    const five = [0, 1, 2, 3, 4].map((i) => goal({ color_index: i }));
+    expect(five).toHaveLength(PAID_ACTIVE_GOAL_CAP);
+    expect(buildGoalsListModel(five, [], "pro").addTileColorIndex).toBeNull();
+    expect(buildGoalsListModel(five, [], "max").addTileColorIndex).toBeNull();
+  });
+
+  it("completed/archived goals do NOT count against the cap or palette", () => {
     const model = buildGoalsListModel(
       [
         goal({ color_index: 0, status: "active" }),
         goal({ color_index: 1, status: "completed" }),
       ],
       [],
+      "free",
     );
-    // Only the active goal's color is used → next is 1 (Phase 1 algorithm:
-    // used = ACTIVE goals' colors).
+    // Only the active goal's color is used → next is 1.
     expect(model.addTileColorIndex).toBe(1);
   });
 });

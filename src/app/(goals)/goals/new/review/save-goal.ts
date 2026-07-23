@@ -54,11 +54,25 @@ import {
   stagedFlags,
   type SafetyFlagRecord,
 } from "@/lib/ai/safety-flags";
-import { ACTIVE_GOAL_CAP, pickColorIndex } from "@/lib/goal-colors";
+import { tierGoalCap, pickColorIndex } from "@/lib/goal-colors";
 import { capture } from "@/lib/analytics/server";
 import { normalizePlanForSave } from "./review-plan";
 
-export type SaveGoalResult = { ok: true } | { ok: false; error: string };
+/**
+ * The cap-hit failure carries the structured payload the client's cap-hit
+ * modal reads (mirrors the AI routes' 402 body). `error: "cap_hit"` is the
+ * sentinel the review client branches on; generic failures keep a human
+ * `error` string.
+ */
+export type SaveGoalResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      cap?: number;
+      used?: number;
+      kind?: "active_goals";
+    };
 
 export interface SaveGoalInput {
   /** The edited plan in the plan-draft wire shape (re-validated here). */
@@ -73,10 +87,6 @@ const confirmedIntakeSchema = submitIntakeSchema.extend({
 });
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-const CAP_MESSAGE =
-  "Five goals are already in motion — the most that can run at once. " +
-  "Complete one before starting another.";
 
 export async function saveGoal(input: SaveGoalInput): Promise<SaveGoalResult> {
   const { userId } = await auth();
@@ -136,13 +146,19 @@ export async function saveGoal(input: SaveGoalInput): Promise<SaveGoalResult> {
   let saved: { goalId: string; colorIndex: number; totalGoals: number };
   try {
     const outcome = await sdb.transaction(async (tx) => {
-      // Active-goal cap re-checked inside the transaction (Phase 1: hardcoded
-      // 5 — the cap is what keeps the 5-color palette from running out).
+      // Per-tier active-goal cap re-checked inside the transaction (SPEC §10:
+      // Free = 3, Pro/Max = 5). The actor's tier is read here, not trusted
+      // from the client — a soft-deleted self aborts the save.
+      const self = await tx.getSelf();
+      if (!self) {
+        throw new Error("no live user — save aborted");
+      }
+      const cap = tierGoalCap(self.tier);
       const activeGoals = await tx.selectFrom(goals, {
         where: eq(goals.status, "active"),
       });
-      if (activeGoals.length >= ACTIVE_GOAL_CAP) {
-        return { capped: true as const };
+      if (activeGoals.length >= cap) {
+        return { capped: true as const, cap, used: activeGoals.length };
       }
       const colorIndex = pickColorIndex(
         activeGoals.map((g) => g.color_index),
@@ -235,7 +251,15 @@ export async function saveGoal(input: SaveGoalInput): Promise<SaveGoalResult> {
     });
 
     if (outcome.capped) {
-      return { ok: false, error: CAP_MESSAGE };
+      // Server-side capture chokepoint (SPEC §9 taxonomy).
+      await capture(userId, "free_tier_cap_hit", { cap: "active_goals" });
+      return {
+        ok: false,
+        error: "cap_hit",
+        cap: outcome.cap,
+        used: outcome.used,
+        kind: "active_goals",
+      };
     }
     saved = outcome;
   } catch {

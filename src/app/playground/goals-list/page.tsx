@@ -124,12 +124,15 @@ export default async function PlaygroundGoalsListPage({
   const { state } = await searchParams;
   const selected = Array.isArray(state) ? state[0] : state;
 
+  // Tiers make the "Add new goal" tile state explicit: "at-cap" is a Free
+  // user at 5 active (>= the 3 Free cap → hidden), the default view is a paid
+  // user at 3 active (< the 5 paid cap → tile shows).
   const model =
     selected === "empty"
-      ? buildGoalsListModel([], [])
+      ? buildGoalsListModel([], [], "free")
       : selected === "at-cap"
-        ? buildGoalsListModel(ACTIVE_AT_CAP, [])
-        : buildGoalsListModel(ACTIVE_THREE, MILESTONES_THREE);
+        ? buildGoalsListModel(ACTIVE_AT_CAP, [], "free")
+        : buildGoalsListModel(ACTIVE_THREE, MILESTONES_THREE, "max");
 
   return <GoalsList model={model} />;
 }
