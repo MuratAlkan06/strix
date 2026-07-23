@@ -87,7 +87,8 @@
       "@opentelemetry/core": "^2.8.0",
       "dompurify": "^3.4.11",
       "js-yaml": "^4.2.0",
-      "protobufjs": "^7.6.3"
+      "protobufjs": "^7.6.3",
+      "axios": ">=1.18.0"
     }
   }
 }
