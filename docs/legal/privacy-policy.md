@@ -87,7 +87,7 @@ These rights are wired into the product — you do not need to email us to exerc
 - **Access and portability.** Settings → Data → "Export your data" downloads a complete JSON export of everything we hold on you: account data, goals, plans, task history, milestones, equipment, check-ins, intake summaries, and the full intake transcripts. Available on every tier, free included.
 - **Erasure.** Settings → "Delete account" deletes your account: a 30-day recovery window (sign back in to restore), then permanent deletion of all personal data (§7).
 - **Rectification.** Edit your profile, goals, plans, and preferences directly in the app. For anything you cannot edit in-app, contact us.
-- **Restriction, objection, and consent withdrawal.** You can withdraw analytics consent in cookie settings at any time. For health-data consent, restriction, or objection requests, contact us at **[PLACEHOLDER: contact email]**.
+- **Restriction, objection, and consent withdrawal.** You can withdraw analytics consent in Settings at any time — the Analytics toggle stops collection immediately and clears the analytics cookies from your device. For health-data consent, restriction, or objection requests, contact us at **[PLACEHOLDER: contact email]**.
 - **Complaint.** If you are in the EU/EEA or UK, you can lodge a complaint with your local supervisory authority.
 
 **California residents (CCPA/CPRA).** You have the rights to know, correct, and delete personal information, exercised through the same product features above or by contacting us. **We do not sell your personal information and we do not share it for cross-context behavioral advertising**, so there is nothing to opt out of under "Do Not Sell or Share." We will never discriminate against you for exercising your rights.
@@ -110,7 +110,7 @@ These rights are wired into the product — you do not need to email us to exerc
 |---|---|---|
 | Clerk session cookies | Essential — keeping you signed in securely | Not consent-gated (strictly necessary) |
 | Intake draft session cookie | Essential — keeps your in-progress goal draft attached to your browser before you save it (HttpOnly) | Not consent-gated (strictly necessary) |
-| PostHog analytics cookies | Product analytics | **Set only after you opt in**, where consent is required (EU/EEA, UK). Withdraw any time in cookie settings |
+| PostHog analytics cookies | Product analytics | **Set only after you accept** in the consent banner — the analytics SDK does not load until then, so no cookie is set. Withdraw any time in Settings |
 
 We use no advertising or cross-site tracking cookies.
 

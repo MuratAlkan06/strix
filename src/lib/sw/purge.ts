@@ -22,7 +22,12 @@
  * in localStorage under the `strix.install.` prefix
  * (src/lib/use-local-storage.ts). Those keys ARE user-scoped (Clerk user id
  * suffix) AND are cleared here on session end, so the shared-device guarantee
- * holds. No IndexedDB is used. If a future slice adds IndexedDB-backed storage
+ * holds. DELIBERATE EXCEPTION (issue #11): the analytics-consent choice
+ * (src/lib/analytics/consent.ts) is stored DEVICE-GLOBALLY under
+ * `strix.consent.analytics` — outside the `strix.install.` prefix this sweep
+ * matches — precisely so a privacy decision SURVIVES sign-out on a shared
+ * device. It must NEVER be added to this purge. No IndexedDB is used. If a
+ * future slice adds IndexedDB-backed storage
  * (Serwist ExpirationPlugin, BackgroundSync queues, a client data store), this
  * purge MUST be extended to cover it too.
  *

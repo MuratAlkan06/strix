@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { SerwistProvider } from "@serwist/next/react";
 import { MotionProvider } from "@/components/motion-provider";
 import { SessionWatch } from "@/components/session-watch";
+import { ConsentBanner } from "@/components/consent-banner";
 import { SPLASH_STARTUP_IMAGES } from "@/lib/ios-splash";
 import "./globals.css";
 
@@ -134,6 +135,11 @@ export default function RootLayout({
                 surface, not just /settings. */}
             <SessionWatch />
             <MotionProvider>{children}</MotionProvider>
+            {/* Cookie-consent banner (issue #11), mounted app-wide so it can
+                gate PostHog before any analytics loads. It self-hides once the
+                choice is made and never renders on the /playground or /~offline
+                harness surfaces (their screenshot baselines must not move). */}
+            <ConsentBanner />
           </ClerkProvider>
         </SerwistProvider>
       </body>

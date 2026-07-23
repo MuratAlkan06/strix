@@ -269,6 +269,7 @@ src/
 │   ├── emblem.tsx                   # the Strix owl mark (flat geometric, no face)
 │   ├── goal-chip.tsx                # goal dot + name (color never the sole carrier)
 │   ├── install-banner.tsx           # dismissible "add to home screen" affordance (S8)
+│   ├── consent-banner.tsx           # app-wide analytics cookie-consent banner (#11)
 │   ├── session-watch.tsx            # app-wide expiry/revocation purge watcher (S7/CS-4)
 │   ├── session-watch-model.ts       # pure signed-in→out transition machine
 │   ├── upgrade-modal.tsx            # free-cap dialog (no upgrade CTA until Phase 3)
@@ -288,7 +289,7 @@ src/
 │   │                                #   session, transcript, safety-flags, today, log,
 │   │                                #   replan-diff (the Zod-typed proposal diff),
 │   │                                #   replan, adherence
-│   ├── analytics/{server,client}.ts # PostHog wrappers
+│   ├── analytics/{server,client,consent}.ts # PostHog wrappers + device-global consent store (#11)
 │   ├── inngest/
 │   │   ├── client.ts                # Inngest client
 │   │   ├── env-guard.ts             # INNGEST_DEV-on-Vercel runtime assertion (B1)
@@ -308,7 +309,7 @@ src/
 │   │                                #   scripts/generate-splash.mts share it)
 │   ├── limits.ts                    # free-tier usage caps (SPEC §10)
 │   ├── use-local-storage.ts         # install-banner client store: per-user session count +
-│   │                                #   dismissed flag (the only localStorage Strix keeps) (S8)
+│   │                                #   dismissed flag (per-user install state) (S8)
 │   ├── sw/runtime-caching.ts        # SW caching rules — versioned strix-* caches;
 │   │                                #   /api/ai/* pinned never-cached; /~offline fallback
 │   ├── sw/purge.ts                  # session-end purge: full Cache Storage + strix.install.* (S7/S8)

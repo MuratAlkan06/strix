@@ -37,7 +37,7 @@ Must exist before taking payment or shipping to the EU. If any of these is missi
 
   Tracking: #10 — runbook at docs/launch/stripe-setup.md
 
-- [ ] **Cookie consent UI** for PostHog analytics cookies. GDPR ePrivacy directive requires explicit opt-in for non-essential cookies. PostHog has a built-in GDPR mode + recommended banner pattern. Without consent collection, EU sessions can't be analytics-tracked legally.
+- [x] **Cookie consent UI** for PostHog analytics cookies. GDPR ePrivacy directive requires explicit opt-in for non-essential cookies. Implemented (#11) as a defer-init consent gate: the PostHog browser SDK does not load — no request, no cookie — until the user accepts an app-wide consent banner; declining or withdrawing (Settings → Analytics) opts out and clears PostHog's cookies/storage. Chosen over PostHog's cookieless GDPR mode, which still emits anonymous pre-consent events. The choice is device-global and survives sign-out. (Follow-up: server-side posthog-node events are not consent-gated — tracked separately.)
 
   Tracking: #11
 
