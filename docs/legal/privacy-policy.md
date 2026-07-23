@@ -9,7 +9,7 @@
 | Placeholder | What is needed |
 |---|---|
 | **[PLACEHOLDER: entity name]** | The legal entity that operates Strix (the data controller) |
-| **[PLACEHOLDER: production domain]** | The production domain where Strix and this policy are published |
+| **joinstrix.com** | The production domain where Strix and this policy are published |
 | **[PLACEHOLDER: contact address]** | Registered postal address |
 | **[PLACEHOLDER: contact email]** | Privacy contact email |
 | **[PLACEHOLDER: effective date]** | Set when the final reviewed version is published |
@@ -22,7 +22,7 @@
 
 ## 1. Who we are
 
-Strix, at **[PLACEHOLDER: production domain]**, is operated by **[PLACEHOLDER: entity name]** ("we," "us"). We are the data controller for the personal data described in this policy. Contact details are in §12.
+Strix, at **joinstrix.com**, is operated by **[PLACEHOLDER: entity name]** ("we," "us"). We are the data controller for the personal data described in this policy. Contact details are in §12.
 
 Strix is a goal-tracking app: you describe a goal, an AI assistant interviews you, and the app generates and tracks a structured plan. That design means you tell us things about yourself in free text. This policy describes exactly what we collect, who processes it, how long we keep it, and the controls you have.
 
