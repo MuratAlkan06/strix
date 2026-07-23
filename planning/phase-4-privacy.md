@@ -68,7 +68,7 @@
   - Subscription handling per the state above: annual-within-window → issue the prorated refund (reuse Phase 3's refund computation and `stripe.refunds.create` path; **exactly one refund** — re-check no prior refund exists) and cancel immediately, syncing the local row in the same action; annual-past-window and monthly → `stripe.subscriptions.update(subId, { cancel_at_period_end: true })`; trialing → cancel immediately (no charge ever happens).
   - Set `users.deleted_at = now()`.
   - Sign the user out via Clerk (which also triggers the Phase 2.5 client-side cache purge).
-  - Send transactional email via Resend: `account_deletion_initiated` — "We've started deleting your account. To recover, sign in within 30 days at strix.app. After 30 days, all data is permanently removed."
+  - Send transactional email via Resend: `account_deletion_initiated` — "We've started deleting your account. To recover, sign in within 30 days at joinstrix.com. After 30 days, all data is permanently removed."
   - PostHog: `account_deleted { had_subscription }`.
 - Login recovery: if a user signs in with `users.deleted_at IS NOT NULL AND deleted_at + 30 days > now`, show a recovery screen: "Welcome back. Restore your account?" → primary action runs the **recovery reconciliation**, not just a flag flip:
   1. Clear `deleted_at`.
@@ -104,7 +104,7 @@
   - `trial_ending_tomorrow` — sent by Phase 3's `trialReminderTomorrow` Inngest job.
   - `account_deletion_initiated` — sent on soft-delete with recovery instructions.
   - **No `account_hard_deleted` email.** The previous plan's logic was incoherent (it required a backup email that the deletion UI doesn't collect). At hard-delete time there is no email we can responsibly send: the address is being purged from Stripe and Clerk. Skip the template entirely.
-- All emails go through `lib/email/send.ts` which logs to PostHog `email_sent { template, user_id }` for deliverability tracking.
+- All emails go through `lib/email/send.ts` which logs to PostHog `email_sent { template, user_id }` for deliverability tracking. A **minimal** version of `lib/email/send.ts` — plus `RESEND_API_KEY` — is **pulled forward to the prod-cutover slice S4** for the Phase-3 `trial_ending_tomorrow` reminder; the full email feature set described here (all templates + the verification harness below) remains Phase 4. See `docs/deploy/prod-cutover-plan.md`.
 - **No retention emails** ever per spec §10.
 
 ### Email verification mechanism
