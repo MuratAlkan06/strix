@@ -36,7 +36,13 @@
  */
 import { todayInTimeZone } from "@/lib/equipment-urgency";
 import { FREE_MONTHLY_REPLAN_LIMIT } from "@/lib/limits";
+import { monthStartFor } from "@/lib/billing/period";
 import { weekStartOf } from "../../(dashboard)/dashboard/dashboard-model";
+
+// monthStartFor was hoisted to @/lib/billing/period (S1) so the server-only
+// usage gate and this client-safe model share one period-boundary definition.
+// Re-exported here so existing "./check-in-model" importers keep resolving it.
+export { monthStartFor };
 
 // ---------------------------------------------------------------------------
 // Feelings — what a real submission may carry. 'skipped' is written ONLY by
@@ -84,19 +90,6 @@ export function weekStartFor(
   now: Date = new Date(),
 ): string {
   return weekStartOf(todayInTimeZone(timeZone, now));
-}
-
-/**
- * Calendar-1st (YYYY-MM-01) of the user's current month in their timezone —
- * the usage_counters.period_start key (SPEC §10: calendar-1st reset in the
- * user's timezone). UTC fallback for a missing/invalid timezone rides on
- * todayInTimeZone.
- */
-export function monthStartFor(
-  timeZone: string | null | undefined,
-  now: Date = new Date(),
-): string {
-  return `${todayInTimeZone(timeZone, now).slice(0, 7)}-01`;
 }
 
 // ---------------------------------------------------------------------------

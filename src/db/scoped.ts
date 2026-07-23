@@ -39,7 +39,7 @@
  * from "@/db/unscoped". A CI check (scripts/check-unscoped-db.mjs) restricts
  * those imports to lib/inngest/*, app/api/webhooks/*,
  * lib/auth/lifecycle.ts, and the fixture lifecycle of the env-gated
- * db/scoped.integration.test.ts.
+ * db/scoped.integration.test.ts and lib/billing/usage.integration.test.ts.
  */
 import {
   and,

@@ -1,0 +1,1 @@
+ALTER TABLE "usage_counters" ADD COLUMN "validation_refunds_used" integer DEFAULT 0 NOT NULL;
