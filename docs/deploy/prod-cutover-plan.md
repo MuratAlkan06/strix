@@ -23,12 +23,15 @@ format, and the `LAUNCH_CHECKLIST.md` device-matrix vocabulary verbatim.
 
 ### 0.1 Decide + register the production domain
 
-The **root dependency** of everything below. The domain is still a
-**[PLACEHOLDER: production domain]** in the ToS (#8), Privacy (#9), and
-`docs/launch/email-dns.md` runbooks (working example `strix.app`), and it binds
-the Clerk prod instance, the Stripe public-details URLs, and the Resend sending
-subdomain. Practically **irreversible**: once Clerk prod cookies, Stripe URLs,
-and email DKIM are pinned to it, changing it means re-doing Phases 1–3.
+The **root dependency** of everything below. The domain is **decided:
+`joinstrix.com`** (issue #70 — registered at Porkbun 2026-07-22, DNS delegated
+to Vercel; **Phase 1 holds until the attorney confirms the trademark**) and
+`docs/launch/email-dns.md` is updated to it. The ToS (#8) and Privacy (#9)
+drafts still carry the **[PLACEHOLDER: production domain]** pending their own
+pass. It binds the Clerk prod instance, the Stripe public-details URLs, and the
+Resend sending subdomain. Practically **irreversible**: once Clerk prod cookies,
+Stripe URLs, and email DKIM are pinned to it, changing it means re-doing
+Phases 1–3.
 
 **Decide, register, and put DNS under management before Phase 1.** A domain
 change after Phase 1 restarts from 0.1 (see Revisit triggers).
@@ -224,7 +227,7 @@ Galaxy S22 (Chrome).
 (flush/verify no stale resolver cache) before running its column — a mid-
 propagation stale record produces false failures.
 
-**Evidence protocol (N1, per ADR-0002 + `LAUNCH_CHECKLIST.md`):**
+**Evidence protocol (per the "Evidence split" rule in ADR-0002 + `LAUNCH_CHECKLIST.md`):**
 
 - **Raw media** (screenshots, recordings, per-cell timings) → the
   **UNCOMMITTED** sibling directory `strix-phase2.5-evidence/` (PII /
@@ -240,13 +243,13 @@ Only after Phase 4 is green.
 
 1. Commit the empty marker file **`.prod-cutover-verified`** at the repo root.
 
-   > **Discrepancy (do not silently reconcile):** issue #70, ADR-0002
-   > (lines 173/186), and `LAUNCH_CHECKLIST.md` (line 18) all name the marker
-   > **`PROD_CUTOVER_VERIFIED`**. The enforcing script
-   > `scripts/check-prod-cutover-gate.mjs` reads **`.prod-cutover-verified`**
-   > (its exported `MARKER_FILE`). **The script is authoritative** — commit
-   > `.prod-cutover-verified`. Flagged, not edited into the other docs, per this
-   > slice's scope (Open question is tracked; see the slice plan). This plan is
+   > **Discrepancy resolved (2026-07-22 doc-reconciliation slice):** ADR-0002
+   > (lines 173/186) and `LAUNCH_CHECKLIST.md` (line 18) previously named the
+   > marker **`PROD_CUTOVER_VERIFIED`**; they now match the enforcing script
+   > `scripts/check-prod-cutover-gate.mjs`, whose exported `MARKER_FILE` is
+   > **`.prod-cutover-verified`** — the authoritative name to commit. The
+   > runtime env var `STRIX_PROD_CUTOVER_VERIFIED=1` (below) is a correctly-named,
+   > intentionally distinct variable and was left unchanged. This plan is
    > **not** creating the marker — it documents it.
 
 2. In the **same commit**, land the filled-in `LAUNCH_CHECKLIST.md` Phase-4
@@ -394,19 +397,21 @@ These are **not** set at the Phase-3 env-flip — they arrive with their slice
 | from-address `no-reply@send.<domain>` | server | Resend sending subdomain (Phase 1 DNS) | **S4** (reminder `from`) |
 | `STRIX_PROD_CUTOVER_VERIFIED` = `1` | server | — | **Phase 5**, prod scope, same session as the marker |
 
-> **Doc reconciliation (follow-up slice — do NOT edit those docs in this pass):**
-> README:35, `planning/phase-0-foundations.md:75`, and
-> `planning/phase-4-privacy.md:113` currently place Resend / `lib/email/send.ts`
-> in **Phase 4**. S4's trial-reminder email pulls a **minimal
-> transactional-send helper forward**; those three docs get corrected in a
-> follow-up slice.
+> **Doc reconciliation — DONE (2026-07-22 doc-reconciliation slice):**
+> `README.md`, `planning/phase-0-foundations.md`, and
+> `planning/phase-4-privacy.md` previously placed Resend / `lib/email/send.ts`
+> wholly in **Phase 4**. They now record that S4's trial-reminder email pulls a
+> **minimal transactional-send helper (`lib/email/send.ts`) plus
+> `RESEND_API_KEY` forward**, while the full Resend/email feature set remains
+> Phase 4.
 
 ---
 
 ## Open questions (owner)
 
-1. Is the **production domain** decided and registered? (Blocks Phase 1 and
-   0.2.)
+1. **Production domain — RESOLVED (#70).** Decided: `joinstrix.com` (registered
+   at Porkbun 2026-07-22, DNS delegated to Vercel). Phase 1 still holds until
+   the attorney confirms the trademark.
 2. **Who resolves the legal-entity placeholders** — entity name, governing
    law, registered address? These feed the ToS, the Privacy policy, and the
    Stripe Tax origin address. (Blocks attorney review — the longest lead.)

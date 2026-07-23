@@ -32,8 +32,11 @@ cp .env.example .env.local   # then fill in values from each provider's dashboar
   truthy, `/api/inngest` skips signature verification).
 - `POSTHOG_API_KEY`, `NEXT_PUBLIC_POSTHOG_KEY` — server + client analytics.
 
-Phase 3 adds `STRIPE_*`. Phase 4 adds `RESEND_API_KEY`. The Anthropic key
-slots in for Phase 1. `STRIX_BUILD_ID` is **not** an env var — it is
+Phase 3 adds `STRIPE_*`. The prod-cutover slice S4 pulls `RESEND_API_KEY` and a
+minimal transactional sender (`lib/email/send.ts`) forward for the trial-ending
+reminder; the full Resend/email feature set stays Phase 4
+([docs/deploy/prod-cutover-plan.md](docs/deploy/prod-cutover-plan.md)). The
+Anthropic key slots in for Phase 1. `STRIX_BUILD_ID` is **not** an env var — it is
 build-injected by `serwist build` (see Deploy below). The full env surface and
 sourcing live in [`.env.example`](./.env.example) and
 [ADR-0002](docs/adr/0002-production-deploy.md).

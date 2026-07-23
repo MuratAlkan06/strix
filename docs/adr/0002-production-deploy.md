@@ -170,7 +170,7 @@ All server secrets are **server-only** in Vercel env; none appear in any
   and refuses a `-pooler` host; `drizzle.config.ts` mirrors the preference
   (no reject — it also backs `db:generate`/`db:push`).
 - **CI tripwire** — fail CI if Stripe/commerce code (an `sk_live_` literal or a
-  `stripe` import) appears without a committed `PROD_CUTOVER_VERIFIED` marker.
+  `stripe` import) appears without a committed `.prod-cutover-verified` marker.
 
 ## Phase-3 commerce exit gate (flag #1, BLOCKING)
 
@@ -183,7 +183,7 @@ pass:
 
 Enforced by:
 
-- the **CI tripwire** (the `PROD_CUTOVER_VERIFIED` marker);
+- the **CI tripwire** (the `.prod-cutover-verified` marker);
 - a **runtime Stripe-live-key guard** to be implemented in Phase 3 (throw unless
   `STRIX_PROD_CUTOVER_VERIFIED=1`);
 - tracking issue **#70**.

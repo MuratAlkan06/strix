@@ -72,7 +72,7 @@
 
 ### Repository hygiene
 
-- `.env.example` lists all required env vars: `DATABASE_URL`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `POSTHOG_API_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`, `STRIPE_SECRET_KEY` (Phase 3), `STRIPE_WEBHOOK_SECRET` (Phase 3), `INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY`, `RESEND_API_KEY` (Phase 4).
+- `.env.example` lists all required env vars: `DATABASE_URL`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `POSTHOG_API_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`, `STRIPE_SECRET_KEY` (Phase 3), `STRIPE_WEBHOOK_SECRET` (Phase 3), `INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY`, `RESEND_API_KEY` (minimal sender at prod-cutover S4; full email set Phase 4).
 - `README.md` covers local setup, env vars, `pnpm db:push` for dev, `pnpm db:migrate` for prod.
 
 ## Phase-specific context

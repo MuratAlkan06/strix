@@ -15,7 +15,7 @@ Umbrella tracking issue: #7. Each item below carries its issue number and, where
 1. **Prod cutover** — custom domain + Clerk **prod** instance + prod Neon + prod PostHog stood up (the production standup deferred out of v0.5.0).
 2. **Re-run of the native-feel + gate-9.5 matrix on the real prod origin** — the PWA install matrix below, re-executed against production (not the preview). v0.5.0 only certifies native-feel on the `*.vercel.app` PREVIEW.
 
-Enforced by: the **CI tripwire** (a committed `PROD_CUTOVER_VERIFIED` marker — CI fails if Stripe/commerce code lands without it), a **runtime Stripe-live-key guard** to be implemented in Phase 3 (throws unless `STRIX_PROD_CUTOVER_VERIFIED=1`), and tracking issue **#70**.
+Enforced by: the **CI tripwire** (a committed `.prod-cutover-verified` marker — CI fails if Stripe/commerce code lands without it), a **runtime Stripe-live-key guard** to be implemented in Phase 3 (throws unless `STRIX_PROD_CUTOVER_VERIFIED=1`), and tracking issue **#70**.
 
 Rationale and the full deploy contract: **ADR-0002** (`docs/adr/0002-production-deploy.md`).
 
@@ -59,7 +59,7 @@ Required before real scale. Not Phase-3-blocking — internal/closed-beta on Pha
 
   Tracking: #14
 
-- [ ] **DKIM + SPF + DMARC** records on the Resend sending domain. Operational: required for email deliverability (otherwise transactional mail lands in spam) and for anti-spoofing. Resend provides the records; we set them in DNS for `strix.app` (or whatever the production domain is).
+- [ ] **DKIM + SPF + DMARC** records on the Resend sending domain. Operational: required for email deliverability (otherwise transactional mail lands in spam) and for anti-spoofing. Resend provides the records; we set them in DNS for `joinstrix.com`.
 
   Tracking: #15 — runbook at docs/launch/email-dns.md
 

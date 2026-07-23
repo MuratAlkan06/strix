@@ -8,13 +8,13 @@ Tracked as issue #15 under umbrella #7. LAUNCH_CHECKLIST: "DKIM + SPF + DMARC re
 
 ## 1. Decide the production domain
 
-The production domain is not yet finalized: **[PLACEHOLDER: production domain]**. (LAUNCH_CHECKLIST and planning docs use `strix.app` as the working example — "or whatever the production domain is.") This decision blocks everything below, and also issues #8/#9 (the legal docs publish at this domain).
+The production domain is **decided: `joinstrix.com`** (issue #70 — registered at Porkbun on 2026-07-22; nameservers delegated to Vercel DNS, with the domain held at the Vercel team level and not yet assigned to the project). **Phase 1 HOLDS until the attorney confirms the trademark:** the decision is recorded here, but the real DNS records below are not created until the Phase-1 DNS session. This choice binds the Clerk prod instance, the Stripe public-details URLs, and the Resend sending subdomain, and also issues #8/#9 (the legal docs publish at this domain).
 
-**Done when:** the domain is decided, registered, and its DNS is managed somewhere you can add records.
+**Done when:** the domain is decided, registered, and its DNS is managed somewhere you can add records — **done** (`joinstrix.com`, DNS on Vercel); record creation still gated on the attorney trademark check.
 
 ## 2. Use a sending subdomain
 
-Recommendation: send transactional mail from a dedicated subdomain, e.g. `send.[PLACEHOLDER: production domain]` (so mail comes from `no-reply@send.<domain>` or similar).
+Recommendation: send transactional mail from a dedicated subdomain, e.g. `send.joinstrix.com` (so mail comes from `no-reply@send.joinstrix.com` or similar).
 
 Why: it isolates the email reputation of transactional mail from the root domain, keeps the root's DNS clean, and is Resend's recommended pattern. The DMARC policy still lives on the root domain and covers the subdomain.
 
@@ -30,7 +30,7 @@ Why: it isolates the email reputation of transactional mail from the root domain
 
 ## 4. Create the DNS records at the DNS host
 
-1. At the DNS host for **[PLACEHOLDER: production domain]**, create **exactly** the records Resend lists — copy them verbatim (names, types, values). Do not hand-author SPF or DKIM values; Resend's are authoritative for its infrastructure and may change between accounts.
+1. At the DNS host for **`joinstrix.com`** (Vercel DNS), create **exactly** the records Resend lists — copy them verbatim (names, types, values). Do not hand-author SPF or DKIM values; Resend's are authoritative for its infrastructure and may change between accounts.
 2. Typical set: 1–3 DKIM records (TXT or CNAME), 1 SPF TXT on the sending subdomain, 1 MX on the sending subdomain. Keep TTLs at the host's default.
 
 **Done when:** all records Resend listed resolve publicly (`dig TXT <name>` / the DNS host's preview shows them).
@@ -40,7 +40,7 @@ Why: it isolates the email reputation of transactional mail from the root domain
 DMARC is set on the **root** domain, not the sending subdomain, and starts in monitor-only mode:
 
 1. Create a TXT record:
-   - Name: `_dmarc.[PLACEHOLDER: production domain]`
+   - Name: `_dmarc.joinstrix.com`
    - Value: `v=DMARC1; p=none; rua=mailto:[PLACEHOLDER: DMARC report mailbox]`
 2. `p=none` means: enforce nothing yet, send aggregate reports to the `rua` mailbox so we can see who is sending as the domain.
 
@@ -78,7 +78,7 @@ DMARC is set on the **root** domain, not the sending subdomain, and starts in mo
 
 ## Final checklist
 
-- [ ] Production domain decided **[PLACEHOLDER: production domain]**
+- [x] Production domain decided: **`joinstrix.com`** (Porkbun, DNS on Vercel; Phase-1 record creation holds on attorney trademark confirmation)
 - [ ] Sending subdomain chosen (recommendation: `send.<domain>`)
 - [ ] Domain added in Resend; DNS records copied verbatim to the DNS host
 - [ ] DMARC `p=none` + `rua` reporting live on the root domain
