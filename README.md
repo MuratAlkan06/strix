@@ -46,9 +46,16 @@ sourcing live in [`.env.example`](./.env.example) and
 ```bash
 pnpm db:generate    # generate SQL migrations from src/db/schema.ts
 pnpm db:push        # dev: push schema directly to Neon branch (skips migrations)
-pnpm db:migrate     # prod: apply ./drizzle/*.sql migrations
+pnpm db:migrate     # prod: apply ./drizzle/*.sql migrations (target-confirmed)
 pnpm db:studio      # browse data
 ```
+
+`pnpm db:migrate` confirms which database it is about to migrate before
+applying anything: it echoes the resolved **host** (never the credentialed
+URL) and then requires either a `STRIX_MIGRATE_TARGET` allowlist match (exact
+hostname; comma-separated for multiple) **or**, when run interactively, retyping
+the host to confirm. A non-interactive run (CI) without `STRIX_MIGRATE_TARGET`
+refuses to migrate — set the allowlist to that run's intended prod host.
 
 ### Driver choice (Vercel serverless footgun)
 
@@ -69,7 +76,9 @@ provisioning runbook, and rollback — is **[ADR-0002](docs/adr/0002-production-
 instance; Clerk forbids prod keys on `*.vercel.app`). The **production** standup
 — custom domain + Clerk **prod** instance + prod Neon/PostHog + Stripe — is
 **Phase 3** (the prod cutover; LAUNCH_CHECKLIST.md, issue #70). Migrations are a
-manual `pnpm db:migrate` against `DIRECT_DATABASE_URL`, never in the build.
+manual `pnpm db:migrate` against `DIRECT_DATABASE_URL`, never in the build, and
+target-confirmed (host echo + `STRIX_MIGRATE_TARGET` allowlist / interactive
+confirm — see Database above).
 
 ## Access scoping
 
@@ -282,6 +291,7 @@ src/
 │   ├── analytics/{server,client}.ts # PostHog wrappers
 │   ├── inngest/
 │   │   ├── client.ts                # Inngest client
+│   │   ├── env-guard.ts             # INNGEST_DEV-on-Vercel runtime assertion (B1)
 │   │   ├── functions.ts             # the serve() registry (3 functions)
 │   │   ├── archive-completed-goals.ts # nightly cron: archive due completed goals
 │   │   ├── reset-monthly-usage-counters.ts # hourly cron shell (Phase 3 fills body)

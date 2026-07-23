@@ -84,3 +84,27 @@ Additionally noted for **Tier C** (`docs/deploy/prod-cutover-plan.md`): the CI
 tripwire (`scripts/check-prod-cutover-gate.mjs`) should later be hardened to
 catch `@stripe/*` specifiers + `api.stripe.com` (C1), and the raw
 migration-error surface (CS-7 Low) should be reduced to host-only.
+
+---
+
+## Addendum (2026-07-22) — S0 closure notes
+
+How the "Required fixes" resolved in S0 (the 2026-07-20 numbered list above is
+the frozen record and is **not** rewritten):
+
+- **`axios`** — `pnpm.overrides` now pins `axios >=1.18.0` (resolves to
+  **1.18.1**), closing GHSA-gcfj-64vw-6mp9 and the May/June 2026 advisory
+  cluster.
+- **`body-parser`** — no override: already resolves at **2.3.0** via PR #95.
+- **`brace-expansion`** — override **intentionally NOT added**. A global
+  `brace-expansion >=5.0.7` override forces the copy under `minimatch@3` (the
+  `eslint` → `@eslint/config-array` chain) to v5, but `minimatch@3` calls
+  `require('brace-expansion')(...)` while v5 is ESM with a named export — the two
+  are incompatible and the override breaks `pnpm lint`. Per the
+  security-dependency-reviewer ruling (2026-07-22, Option (a)) natural resolution
+  already satisfies the security intent: **both** resolved copies carry the
+  CVE-2026-13149 / GHSA-3jxr-9vmj-r5cp fix — `brace-expansion@1.1.16` (dev-only,
+  lint-time; backported on the 1.x line) and `brace-expansion@5.0.7` (prod path
+  via `minimatch@10`). `pnpm audit` reports **0** brace-expansion advisories. A
+  future `eslint`-chain major bump (owned by the sibling dependency-majors
+  session) retires `minimatch@3` naturally; no override is needed in the interim.

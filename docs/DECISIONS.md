@@ -186,6 +186,8 @@ Phase 2.5 formal gate 4 "Lighthouse PWA score ≥ 90" became unmeasurable: Googl
 
 **Two security/footgun invariants worth surfacing here:** `INNGEST_DEV` **must be ABSENT in every Vercel scope** — if truthy, `/api/inngest` skips signature verification and the cron triggers become world-callable (verify with an unsigned POST → 401). And `STRIX_BUILD_ID` is **build-injected** by `serwist build` from `.next/BUILD_ID`, **not** a Vercel env var (an env var would never reach the service-worker bundle). Do **not** enable Vercel **Deployment Protection** — it gates the whole origin and breaks the clean-install gates.
 
+**Addendum (S0, 2026-07-22):** the `INNGEST_DEV` rule is no longer config-only — it is a **hard runtime assertion** (`assertInngestDevAbsentOnVercel` at `/api/inngest` module scope) that throws when `INNGEST_DEV` is set (any value, including a falsy `"0"`) while `VERCEL` is present, so a misconfigured deploy fails at import rather than serving an unsigned-callable route.
+
 ## What is intentionally *not* in MVP
 
 - Push notifications.

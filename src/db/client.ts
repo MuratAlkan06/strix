@@ -15,6 +15,11 @@
  * scoped.ts (scopedDb().transaction), under the same import restrictions as
  * `internalDb`.
  */
+// CS-5 defense-in-depth (docs/security/pr-71-retroactive-review.md): this
+// module holds DATABASE_URL + the Neon client, so keep it out of any client
+// bundle. Already import-restricted by scripts/check-unscoped-db.mjs; this is
+// the belt-and-suspenders boundary. vitest aliases server-only to empty.js.
+import "server-only";
 import { neon, Pool } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { drizzle as drizzleWs } from "drizzle-orm/neon-serverless";
