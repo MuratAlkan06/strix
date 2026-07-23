@@ -203,6 +203,13 @@ export const usage_counters = pgTable(
       .notNull()
       .default(0),
     replans_used: integer("replans_used").notNull().default(0),
+    // Phase 3 (S1, issue #96): count of GRANTED Zod-validation refunds this
+    // period, shared across both metered kinds. Rate-limits refund-on-every-
+    // failure so a Free user can't convert the cap into unlimited failed
+    // Anthropic spend (VALIDATION_REFUND_LIMIT per period).
+    validation_refunds_used: integer("validation_refunds_used")
+      .notNull()
+      .default(0),
     ...timestamps,
   },
   (t) => ({

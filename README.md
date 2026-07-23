@@ -108,8 +108,9 @@ means the proof failed and scopedDb throws.
 
 The escape hatch `unscopedDb` (in `@/db/unscoped`) is allowed only in
 `src/lib/inngest/**`, `src/app/api/webhooks/**`,
-`src/lib/auth/lifecycle.ts` (Phase 4's soft-delete + recovery module), and
-`src/db/scoped.integration.test.ts` (env-gated live-DB test — fixture user
+`src/lib/auth/lifecycle.ts` (Phase 4's soft-delete + recovery module), and the
+env-gated live-DB tests `src/db/scoped.integration.test.ts` and
+`src/lib/billing/usage.integration.test.ts` (fixture user
 lifecycle + residue checks only). CI enforces this:
 
 ```bash

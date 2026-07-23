@@ -41,11 +41,32 @@ vi.mock("@/db/scoped", () => ({
 const generatePlanMock = vi.fn();
 vi.mock("@/lib/ai/plan", () => {
   class PlanUnavailableError extends Error {}
+  class PlanValidationError extends Error {}
   return {
     generatePlan: (...args: unknown[]) => generatePlanMock(...args),
     PlanUnavailableError,
+    PlanValidationError,
   };
 });
+
+// The metered wrapper's quota gate is stubbed here — checkAndIncrement's real
+// atomic UPDATE is proven in usage.test.ts / usage.integration.test.ts. This
+// lets the route tests drive the meter (ok / cap) and assert refund-on-failure.
+let capResult:
+  | { ok: true; periodStart: string }
+  | { ok: false; cap: number; used: number } = {
+  ok: true,
+  periodStart: "2026-07-01",
+};
+const refundUsageMock = vi.fn<
+  (...args: unknown[]) => Promise<{ refunded: boolean }>
+>(async () => ({ refunded: true }));
+vi.mock("@/lib/billing/usage", () => ({
+  checkAndIncrement: vi.fn(async () => capResult),
+  refundUsage: (...args: unknown[]) => refundUsageMock(...args),
+  NoLiveUserError: class NoLiveUserError extends Error {},
+  CAP_KIND_LABEL: { plan: "plan_generations", replan: "replans" },
+}));
 
 const loggedErrors: unknown[] = [];
 vi.mock("@/lib/ai/log", () => ({
@@ -125,6 +146,8 @@ beforeEach(() => {
   loggedErrors.length = 0;
   generatePlanMock.mockReset();
   generatePlanMock.mockResolvedValue(PLAN);
+  capResult = { ok: true, periodStart: "2026-07-01" };
+  refundUsageMock.mockClear();
 });
 
 describe("POST /api/ai/plan — guards (zero writes on every rejection)", () => {
@@ -200,9 +223,11 @@ describe("POST /api/ai/plan — happy path and failure mapping", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ plan: PLAN });
 
-    expect(generatePlanMock).toHaveBeenCalledWith({
-      intakeSummary: COMPLETED_SUMMARY,
-    });
+    // Called with the intake summary + the wrapper's outer abort signal.
+    expect(generatePlanMock).toHaveBeenCalledWith(
+      { intakeSummary: COMPLETED_SUMMARY },
+      expect.any(AbortSignal),
+    );
     expect(updateCalls).toEqual([{ plan_draft: PLAN }]);
     expect(capturedEvents).toEqual([
       {
@@ -220,24 +245,69 @@ describe("POST /api/ai/plan — happy path and failure mapping", () => {
     expect(updateCalls).toEqual([{ plan_draft: PLAN }]);
   });
 
-  it("503s with a constant string when no AI client is configured", async () => {
+  it("503s with a constant string when no AI client is configured (C1)", async () => {
     const { PlanUnavailableError } = await import("@/lib/ai/plan");
     generatePlanMock.mockRejectedValueOnce(new PlanUnavailableError());
     const res = await post();
     expect(res.status).toBe(503);
     expect(await res.text()).toBe("AI service unavailable.");
     expect(updateCalls).toHaveLength(0);
+    // Refund is unconditional for a non-validation failure.
+    expect(refundUsageMock).toHaveBeenCalledWith(
+      "user_1",
+      "plan",
+      "2026-07-01",
+      "unconditional",
+    );
   });
 
-  it("502s with a constant string on model/validation failure, logging server-side", async () => {
-    generatePlanMock.mockRejectedValueOnce(
-      new Error("rate limited; request-id req_abc123"),
-    );
+  it("502 output_invalid on a Zod validation failure, refunds rate-limited (C7)", async () => {
+    const { PlanValidationError } = await import("@/lib/ai/plan");
+    generatePlanMock.mockRejectedValueOnce(new PlanValidationError("bad shape"));
     const res = await post();
     expect(res.status).toBe(502);
     expect(await res.text()).toBe("Plan generation failed.");
     expect(updateCalls).toHaveLength(0);
     expect(capturedEvents).toHaveLength(0);
     expect(loggedErrors).toHaveLength(1);
+    // C7 is the ONLY validation_limited refund.
+    expect(refundUsageMock).toHaveBeenCalledWith(
+      "user_1",
+      "plan",
+      "2026-07-01",
+      "validation_limited",
+    );
+  });
+
+  it("500 internal on any other model error (C9), refunds unconditionally", async () => {
+    generatePlanMock.mockRejectedValueOnce(
+      new Error("rate limited; request-id req_abc123"),
+    );
+    const res = await post();
+    expect(res.status).toBe(500);
+    expect(await res.text()).toBe("Plan generation failed.");
+    expect(updateCalls).toHaveLength(0);
+    expect(loggedErrors).toHaveLength(1);
+    expect(refundUsageMock).toHaveBeenCalledWith(
+      "user_1",
+      "plan",
+      "2026-07-01",
+      "unconditional",
+    );
+  });
+
+  it("402 cap_hit JSON when the meter is exhausted — no model call, no refund", async () => {
+    capResult = { ok: false, cap: 3, used: 3 };
+    const res = await post();
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual({
+      error: "cap_hit",
+      cap: 3,
+      used: 3,
+      kind: "plan_generations",
+    });
+    expect(generatePlanMock).not.toHaveBeenCalled();
+    expect(updateCalls).toHaveLength(0);
+    expect(refundUsageMock).not.toHaveBeenCalled();
   });
 });

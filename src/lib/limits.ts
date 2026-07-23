@@ -1,36 +1,28 @@
 /**
  * limits.ts — free-tier usage caps (SPEC §10 "Free tier usage limits").
  *
- * Free users get **2 replans per calendar month** — weekly check-ins still
- * happen; the AI just doesn't propose changes more than twice. The counter
- * lives in usage_counters.replans_used with a calendar-1st reset in the
- * user's timezone (usage_counters.period_start). Pro/Max are uncapped.
- *
- * Phase 2 only ENFORCES the cap at check-in selection time (how many goals
- * may trigger a replan proposal); the increment itself ships with Phase 3's
- * checkAndIncrement.
+ * Phase 3 (slice S1, issue #96) moved the real quota logic into the billing
+ * module: the server gate lives in @/lib/billing/usage (server-only), the
+ * numbers in @/lib/billing/usage-limits (client-safe). This file stays as the
+ * stable @/lib/limits import surface — it re-exports ONLY the client-safe
+ * constants, so client bundles (the check-in capacity math) keep resolving it
+ * without dragging the server-only gate in. The Phase-2 `checkAndIncrement`
+ * stub (and its "plan_generation" spelling) is gone; metered routes now go
+ * through the runMeteredAi wrapper (@/lib/ai/metered), never a bare call.
  */
-export const FREE_MONTHLY_REPLAN_LIMIT = 2;
+import { FREE_REPLAN_LIMIT } from "@/lib/billing/usage-limits";
 
-/** Operations metered by usage_counters (SPEC §10). */
-export type MeteredOp = "replan" | "plan_generation";
+export {
+  FREE_PLAN_GENERATION_LIMIT,
+  FREE_REPLAN_LIMIT,
+  VALIDATION_REFUND_LIMIT,
+  CAP_KIND_LABEL,
+  freeLimitFor,
+  type MeteredKind,
+} from "@/lib/billing/usage-limits";
 
 /**
- * Phase-2 STUB of the Phase-3 quota gate (phase-2-close-the-loop "Replan
- * flow"): POST /api/ai/replan awaits this BEFORE the model call so the
- * endpoint shape is stable when Phase 3 fills in the real check.
- *
- * TODO(Phase 3): enforce the cap for Free users — read/create the current
- * calendar month's usage_counters row (period_start in the user's timezone),
- * refuse when the op's counter is at its limit, otherwise increment
- * atomically and return ok. Pro/Max stay uncapped. Until then this performs
- * ZERO usage_counters reads or writes and always allows.
+ * Legacy alias kept for check-in-model.ts's capacity math (SPEC §10: Free gets
+ * 2 replans a month). Same value as FREE_REPLAN_LIMIT.
  */
-export async function checkAndIncrement(
-  userId: string,
-  op: MeteredOp,
-): Promise<{ ok: true }> {
-  void userId;
-  void op;
-  return { ok: true };
-}
+export const FREE_MONTHLY_REPLAN_LIMIT = FREE_REPLAN_LIMIT;

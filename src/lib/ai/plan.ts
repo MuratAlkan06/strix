@@ -19,7 +19,7 @@
  */
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 
-import { getClient } from "./client";
+import { getClient, AI_REQUEST_OPTIONS } from "./client";
 import { MODEL_SONNET } from "./models";
 import { planSystem } from "./prompts/plan";
 import { todayIso } from "./today";
@@ -92,20 +92,26 @@ export function buildPlanMessages(args: GeneratePlanArgs): MessageParam[] {
  * provider errors propagate as-is. The route owns translating all of these
  * into constant client-facing strings.
  */
-export async function generatePlan(args: GeneratePlanArgs): Promise<PlanDraft> {
+export async function generatePlan(
+  args: GeneratePlanArgs,
+  signal?: AbortSignal,
+): Promise<PlanDraft> {
   const client = getClient();
   if (!client) {
     throw new PlanUnavailableError();
   }
 
   const startedAt = Date.now();
-  const message = await client.messages.parse({
-    model: MODEL_SONNET,
-    max_tokens: MAX_TOKENS,
-    system: planSystem(),
-    messages: buildPlanMessages(args),
-    output_config: { format: planOutputFormat() },
-  });
+  const message = await client.messages.parse(
+    {
+      model: MODEL_SONNET,
+      max_tokens: MAX_TOKENS,
+      system: planSystem(),
+      messages: buildPlanMessages(args),
+      output_config: { format: planOutputFormat() },
+    },
+    { ...AI_REQUEST_OPTIONS, signal },
+  );
 
   logAiUsage(
     toUsageLog("plan", MODEL_SONNET, message.usage, Date.now() - startedAt),

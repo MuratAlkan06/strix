@@ -86,6 +86,9 @@ export const UNSCOPED_ALLOWED_FILES = new Set([
   // Env-gated live-DB test: unscopedDb for fixture lifecycle (users can't be
   // created through scopedDb by design) + neutral residue checks only.
   ["src", "db", "scoped.integration.test.ts"].join(sep),
+  // Env-gated live-DB test: checkAndIncrement concurrency proof — unscopedDb
+  // for fixture user lifecycle + neutral counter seed/residue checks only.
+  ["src", "lib", "billing", "usage.integration.test.ts"].join(sep),
 ]);
 
 // Files that may import `internalDb` directly from "@/db/client".

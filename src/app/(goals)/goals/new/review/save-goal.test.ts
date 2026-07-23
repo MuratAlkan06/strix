@@ -69,12 +69,18 @@ let activeGoalsFixture: Array<{ color_index: number }> = [];
 let totalGoalsAfterSave = 1;
 let draftDeleteSucceeds = true;
 let transactionCalls = 0;
+let mockTier: "free" | "pro" | "max" = "free";
 
 vi.mock("@/db/scoped", () => ({
   scopedDb: vi.fn((userId: string) => {
     let milestoneSeq = 0;
     const tx = {
       userId,
+      getSelf: vi.fn(async () => ({
+        id: userId,
+        tier: mockTier,
+        timezone: "UTC",
+      })),
       selectFrom: vi.fn(async (table: unknown) =>
         table === goals ? activeGoalsFixture : [],
       ),
@@ -191,6 +197,7 @@ function resetState() {
   totalGoalsAfterSave = 1;
   draftDeleteSucceeds = true;
   transactionCalls = 0;
+  mockTier = "free";
   inserts.length = 0;
   deletes.length = 0;
   captures.length = 0;
@@ -255,10 +262,50 @@ describe("saveGoal — guards reject with zero writes", () => {
     expect(transactionCalls).toBe(0);
   });
 
-  it("active-goal cap: 5 active goals reject in-register", async () => {
+  it("per-tier cap: a Free user's 4th active goal hits the cap (structured cap_hit + PostHog)", async () => {
+    // Free cap = 3; 3 active already → the 4th save is blocked.
+    mockTier = "free";
+    activeGoalsFixture = [0, 1, 2].map((color_index) => ({ color_index }));
+    const result = await saveGoal({ plan: EDITED_PLAN, editsCount: 0 });
+    expect(result).toEqual({
+      ok: false,
+      error: "cap_hit",
+      cap: 3,
+      used: 3,
+      kind: "active_goals",
+    });
+    // Re-checked INSIDE the transaction; no goal/intake/task rows written.
+    expect(transactionCalls).toBe(1);
+    expect(inserts).toHaveLength(0);
+    expect(deletes).toHaveLength(0);
+    expect(redirects).toHaveLength(0);
+    // Server capture chokepoint fired exactly once.
+    expect(
+      captures.filter((c) => c.event === "free_tier_cap_hit"),
+    ).toEqual([{ event: "free_tier_cap_hit", properties: { cap: "active_goals" } }]);
+  });
+
+  it("per-tier cap: a Pro user is allowed a 4th active goal (3 < 5), redirects", async () => {
+    mockTier = "pro";
+    activeGoalsFixture = [0, 1, 2].map((color_index) => ({ color_index }));
+    await saveExpectingRedirect();
+    // Wrote the goal (proceeded past the cap check).
+    expect(inserts.filter((i) => i.table === goals)).toHaveLength(1);
+  });
+
+  it("per-tier cap: a Max user's 6th active goal hits the cap:5", async () => {
+    mockTier = "max";
     activeGoalsFixture = [0, 1, 2, 3, 4].map((color_index) => ({ color_index }));
-    await expectRejected(/five goals/i);
-    expect(transactionCalls).toBe(1); // re-checked INSIDE the transaction
+    const result = await saveGoal({ plan: EDITED_PLAN, editsCount: 0 });
+    expect(result).toEqual({
+      ok: false,
+      error: "cap_hit",
+      cap: 5,
+      used: 5,
+      kind: "active_goals",
+    });
+    expect(transactionCalls).toBe(1);
+    expect(inserts).toHaveLength(0);
   });
 });
 

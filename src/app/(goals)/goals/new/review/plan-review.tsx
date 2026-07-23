@@ -51,6 +51,7 @@ import {
   type PlanSection,
   type PlanValidationIssue,
 } from "./review-plan";
+import { UpgradeModal } from "@/components/upgrade-modal";
 import type { SaveGoalInput, SaveGoalResult } from "./save-goal";
 
 interface PlanReviewProps {
@@ -98,6 +99,7 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const captureFocus = useRestoreFocus(editing !== null);
 
   function isEditing(section: PlanSection, id: string) {
@@ -144,6 +146,11 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
       if (!result) return; // success — the action is redirecting.
       if (result.ok) {
         setSaved(true);
+      } else if (result.error === "cap_hit") {
+        // Active-goal cap — open the upgrade modal, not the error surface. The
+        // free_tier_cap_hit event already fired server-side in save-goal.
+        setUpgradeOpen(true);
+        setPending(false);
       } else {
         setError(result.error);
         setPending(false);
@@ -380,6 +387,12 @@ export function PlanReview({ plan, onSave }: PlanReviewProps) {
           Nothing is saved until you save the goal. Leaving keeps the draft.
         </p>
       </div>
+
+      <UpgradeModal
+        open={upgradeOpen}
+        onOpenChange={setUpgradeOpen}
+        capKind="active_goals"
+      />
     </div>
   );
 }

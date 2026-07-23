@@ -24,9 +24,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { UpgradeModal } from "@/components/upgrade-modal";
+import { capture } from "@/lib/analytics/client";
 import { cn } from "@/lib/utils";
 
-export type PlanGenerationState = "generating" | "ready" | "error";
+export type PlanGenerationState = "generating" | "ready" | "error" | "capped";
 
 interface PlanGenerationProps {
   /** Server-derived starting state: "ready" when plan_draft already exists. */
@@ -40,6 +42,7 @@ export function PlanGeneration({
   fixtureMode = false,
 }: PlanGenerationProps) {
   const [state, setState] = useState<PlanGenerationState>(initialState);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const kickedRef = useRef(false);
 
   const generate = useCallback(async () => {
@@ -47,6 +50,14 @@ export function PlanGeneration({
     if (fixtureMode) return;
     try {
       const res = await fetch("/api/ai/plan", { method: "POST" });
+      // Cap hit (402) opens the upgrade modal instead of the error surface —
+      // this is a quota state, not a transient failure to retry.
+      if (res.status === 402) {
+        capture("free_tier_cap_hit", { cap: "plan_generations" });
+        setState("capped");
+        setUpgradeOpen(true);
+        return;
+      }
       if (!res.ok) throw new Error("plan generation failed");
       setState("ready");
     } catch {
@@ -142,6 +153,37 @@ export function PlanGeneration({
           </div>
         </>
       )}
+
+      {state === "capped" && (
+        <>
+          <h2
+            id="plan-generation-heading"
+            className="font-heading text-xl font-medium tracking-tight text-foreground sm:text-[22px]"
+          >
+            You&apos;ve used all your plan generations this month.
+          </h2>
+          <p className="mt-2 text-base leading-relaxed text-foreground">
+            Your answers are saved. Upgrade to keep building, or come back next
+            month when your free plan generations reset.
+          </p>
+          <div className="mt-5">
+            <Button
+              type="button"
+              size="lg"
+              onClick={() => setUpgradeOpen(true)}
+              className="h-11 min-h-11 w-full px-5 sm:w-auto"
+            >
+              See upgrade options
+            </Button>
+          </div>
+        </>
+      )}
+
+      <UpgradeModal
+        open={upgradeOpen}
+        onOpenChange={setUpgradeOpen}
+        capKind="plan_generations"
+      />
     </section>
   );
 }

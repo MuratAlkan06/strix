@@ -21,8 +21,23 @@
  * the next color with the same function.
  */
 
-/** Phase 1 active-goal cap — hardcoded to the highest paid-tier cap. */
-export const ACTIVE_GOAL_CAP = 5;
+/** Free-tier active-goal cap (SPEC §10). */
+export const FREE_ACTIVE_GOAL_CAP = 3;
+
+/** Pro / Max active-goal cap (SPEC §10) — also the palette size. */
+export const PAID_ACTIVE_GOAL_CAP = 5;
+
+/**
+ * Legacy alias — Phase 1 hardcoded a single cap of 5 (the highest paid-tier
+ * cap). Phase 3 (S1) splits it per tier via tierGoalCap; kept pointing at the
+ * paid cap for any caller that still references it.
+ */
+export const ACTIVE_GOAL_CAP = PAID_ACTIVE_GOAL_CAP;
+
+/** The active-goal cap for a user's tier: Free = 3, Pro/Max = 5 (SPEC §10). */
+export function tierGoalCap(tier: "free" | "pro" | "max"): number {
+  return tier === "free" ? FREE_ACTIVE_GOAL_CAP : PAID_ACTIVE_GOAL_CAP;
+}
 
 /** Size of the goal-attribution palette (DESIGN.md §5: indexes 0–4). */
 export const GOAL_COLOR_COUNT = 5;
