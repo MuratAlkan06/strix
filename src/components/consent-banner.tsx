@@ -16,7 +16,11 @@
  *     Reads the device-global consent (src/lib/analytics/consent.ts), shows the
  *     view ONLY while the choice is pending, and — when the choice is already
  *     "granted" — starts analytics on load so a returning user is tracked
- *     without ever seeing the banner again.
+ *     without ever seeing the banner again. The view is position:fixed, so the
+ *     container also renders an in-flow spacer of the banner's measured height:
+ *     the banner RESERVES space rather than overlaying/occluding page content
+ *     (e.g. the landing CTAs). On a choice, focus is moved to the <main>
+ *     landmark so it never drops to <body> (WCAG 2.4.3), mirroring install-banner.
  *
  * NO DARK PATTERNS (DESIGN.md §1 register + #11 AC): decline is exactly as easy
  * as accept — two equal-weight buttons, both persist a choice and dismiss the
@@ -27,7 +31,7 @@
  * verify:ui screenshot baselines; an app-wide overlay there would change those
  * pixels. The banner belongs on the real product surfaces, not the harnesses.
  */
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -65,9 +69,31 @@ function announceChoice(granted: boolean): void {
 }
 
 /**
+ * On a choice the banner <section> unmounts; without intervention focus drops to
+ * <body> (a WCAG 2.4.3 focus-order failure for keyboard users — the same bug
+ * class install-banner.tsx guards with focusDismissNeighbor). Because this
+ * banner is GLOBAL (no single per-page neighbor to name), it restores focus to
+ * the page's <main> landmark instead: make it programmatically focusable
+ * (tabindex=-1 if it is not already) and focus it a frame later, AFTER React's
+ * unmount commit. If there is no <main>, focus is left for the browser rather
+ * than forced onto <body>. Runs from the SHARED handlers so it covers the real
+ * app-wide mount AND the /playground/consent-banner harness identically.
+ */
+function focusMainLandmark(): void {
+  if (typeof document === "undefined") return;
+  requestAnimationFrame(() => {
+    const main = document.querySelector("main");
+    if (main === null) return;
+    if (!main.hasAttribute("tabindex")) main.setAttribute("tabindex", "-1");
+    main.focus();
+  });
+}
+
+/**
  * Presentational consent banner. Two equal-weight actions; either announces the
- * result (SR-polite) before handing off to the container, so the announcement
- * survives the unmount. Shared by the real mount and the playground harness.
+ * result (SR-polite) and moves focus to the <main> landmark before handing off
+ * to the container, so both survive the unmount. Shared by the real mount and
+ * the playground harness.
  */
 export function ConsentBannerView({
   onAccept,
@@ -79,10 +105,12 @@ export function ConsentBannerView({
   const handleAccept = () => {
     announceChoice(true);
     onAccept();
+    focusMainLandmark();
   };
   const handleDecline = () => {
     announceChoice(false);
     onDecline();
+    focusMainLandmark();
   };
 
   return (
@@ -144,6 +172,21 @@ export function ConsentBanner() {
   // Store idiom install-banner uses for its static signals.
   const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
 
+  // The banner is position:fixed so it stays pinned above the fold, but a fixed
+  // element occludes whatever it overlaps — on the landing page it hid the
+  // bottom CTAs. So instead of overlaying, we RESERVE its space: an in-flow
+  // spacer at the end of the document, exactly as tall as the banner, keeps the
+  // bottom-most page content reachable ABOVE the banner rather than behind it.
+  // The banner stacks (taller) on mobile and sits in one row on ≥sm, so its
+  // height is MEASURED — not assumed — and tracked through breakpoint / font /
+  // safe-area reflow with a ResizeObserver.
+  const bannerRef = useRef<HTMLDivElement | null>(null);
+  const [bannerHeight, setBannerHeight] = useState(0);
+
+  // Single source of truth for "is the pending banner on screen" — decided
+  // before the early return so the measurement effect can depend on it.
+  const showBanner = hydrated && !excluded && consent === null;
+
   // Returning user who already accepted: start analytics on load, no banner
   // (#11 AC A3 "init on load without banner"). Skipped on excluded surfaces so
   // the verify:ui harnesses stay network-free and deterministic. initPostHog is
@@ -154,18 +197,38 @@ export function ConsentBanner() {
     if (consent === "granted") initPostHog();
   }, [excluded, consent]);
 
-  if (excluded) return null;
-  if (!hydrated) return null; // pre-hydration: nothing (avoids the flash/mismatch)
-  if (consent !== null) return null; // decided → banner never shows again
+  // Keep the spacer exactly the banner's height for as long as it is mounted.
+  // The ref is only attached while `showBanner` is true, so the effect no-ops
+  // otherwise; it re-runs when the banner appears (ref then populated).
+  useEffect(() => {
+    const el = bannerRef.current;
+    if (el === null) return;
+    const measure = () => setBannerHeight(el.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [showBanner]);
+
+  if (!showBanner) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pt-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
-      <div className="w-full max-w-2xl">
-        <ConsentBannerView
-          onAccept={() => setAnalyticsConsent("granted")}
-          onDecline={() => setAnalyticsConsent("denied")}
-        />
+    <>
+      <div
+        ref={bannerRef}
+        className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pt-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]"
+      >
+        <div className="w-full max-w-2xl">
+          <ConsentBannerView
+            onAccept={() => setAnalyticsConsent("granted")}
+            onDecline={() => setAnalyticsConsent("denied")}
+          />
+        </div>
       </div>
-    </div>
+      {/* In-flow spacer reserving the fixed banner's height at the bottom of the
+          document (see the block comment above). aria-hidden + shrink-0: it is
+          pure layout and must never collapse under flex pressure. */}
+      <div aria-hidden="true" className="shrink-0" style={{ height: bannerHeight }} />
+    </>
   );
 }

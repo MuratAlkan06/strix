@@ -13,6 +13,14 @@
  * state is spelled out in text (not carried by the switch position alone —
  * DESIGN.md §11 "color is never the sole signal"), and the tap target clears
  * ≥44px via the min-h-11 label that toggles the switch.
+ *
+ * STRUCTURE — two pieces, on purpose (the consent-banner.tsx convention):
+ *   - AnalyticsConsentCardView: a PURE presentational Card (granted + onToggle).
+ *     It is what the /playground/analytics-consent-card harness renders directly,
+ *     so the auth-gated settings surface still gets live axe/screenshot coverage
+ *     without the store or PostHog running on the harness.
+ *   - AnalyticsConsentCard: the container wired to the device-global consent
+ *     store; toggling is effective immediately via setAnalyticsConsent.
  */
 import {
   Card,
@@ -28,10 +36,18 @@ import { useAnalyticsConsent } from "@/lib/analytics/consent";
 
 const SWITCH_ID = "analytics-consent-switch";
 
-export function AnalyticsConsentCard() {
-  const consent = useAnalyticsConsent();
-  const granted = consent === "granted";
-
+/**
+ * Presentational analytics card. `granted` drives both the switch position AND
+ * the text state (color is never the sole signal); `onToggle` receives the next
+ * granted value. Shared by the real settings mount and the playground harness.
+ */
+export function AnalyticsConsentCardView({
+  granted,
+  onToggle,
+}: {
+  granted: boolean;
+  onToggle: (granted: boolean) => void;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -60,12 +76,23 @@ export function AnalyticsConsentCard() {
           <Switch
             id={SWITCH_ID}
             checked={granted}
-            onCheckedChange={(checked) =>
-              setAnalyticsConsent(checked ? "granted" : "denied")
-            }
+            onCheckedChange={onToggle}
           />
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+export function AnalyticsConsentCard() {
+  const consent = useAnalyticsConsent();
+
+  return (
+    <AnalyticsConsentCardView
+      granted={consent === "granted"}
+      onToggle={(granted) =>
+        setAnalyticsConsent(granted ? "granted" : "denied")
+      }
+    />
   );
 }
