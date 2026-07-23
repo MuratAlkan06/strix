@@ -35,7 +35,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { initPostHog, setAnalyticsConsent } from "@/lib/analytics/client";
+import { applyConsent, setAnalyticsConsent } from "@/lib/analytics/client";
 import { useAnalyticsConsent } from "@/lib/analytics/consent";
 
 const SHELL =
@@ -187,14 +187,16 @@ export function ConsentBanner() {
   // before the early return so the measurement effect can depend on it.
   const showBanner = hydrated && !excluded && consent === null;
 
-  // Returning user who already accepted: start analytics on load, no banner
-  // (#11 AC A3 "init on load without banner"). Skipped on excluded surfaces so
-  // the verify:ui harnesses stay network-free and deterministic. initPostHog is
-  // itself consent-gated + idempotent, so this is safe to call unconditionally
-  // once granted.
+  // Reconcile analytics to the CURRENT device-global consent, in BOTH directions
+  // (#11 AC A3 + review M1). "granted" on load starts analytics with no banner;
+  // when a SIBLING tab flips the choice, the native `storage` event re-renders
+  // this container and applyConsent tears the live SDK down to match — so a
+  // withdrawal in one tab stops capture (and re-persist) in EVERY tab, not just
+  // the one that clicked. Skipped on excluded surfaces so the verify:ui harnesses
+  // stay network-free and deterministic. applyConsent is consent-gated + idempotent.
   useEffect(() => {
     if (excluded) return;
-    if (consent === "granted") initPostHog();
+    applyConsent(consent);
   }, [excluded, consent]);
 
   // Keep the spacer exactly the banner's height for as long as it is mounted.
