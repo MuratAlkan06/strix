@@ -9,6 +9,9 @@
  *                                  must see soft-deleted users)
  *   - src/db/scoped.integration.test.ts (env-gated live-DB test — fixture
  *                                  user lifecycle + residue checks only)
+ *   - src/lib/billing/usage.integration.test.ts (env-gated live-DB test —
+ *                                  fixture user lifecycle + counter seed/
+ *                                  residue checks only)
  *
  * If you reach for this from anywhere else, you almost certainly want
  * scopedDb(userId) from "@/db/scoped" instead (including getSelf()/

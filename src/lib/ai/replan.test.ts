@@ -30,6 +30,7 @@ let clientOrNull: { messages: { parse: typeof parseMock } } | null = {
 
 vi.mock("./client", () => ({
   getClient: vi.fn(() => clientOrNull),
+  AI_REQUEST_OPTIONS: { timeout: 60_000, maxRetries: 1 },
 }));
 
 // --- import under test (after mocks) ----------------------------------------

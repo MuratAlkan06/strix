@@ -51,7 +51,7 @@
  * All AI access goes through src/lib/ai/* — never @anthropic-ai/sdk directly.
  */
 import { auth } from "@clerk/nextjs/server";
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { scopedDb } from "@/db/scoped";
@@ -66,14 +66,14 @@ import {
   weekly_check_ins,
 } from "@/db/schema";
 import { adherenceWindowStart, aggregateAdherence } from "@/lib/ai/adherence";
-import { logAiError } from "@/lib/ai/log";
 import {
   generateReplan,
-  ReplanUnavailableError,
   resolveIntensity,
   type ReplanTriggerPayload,
 } from "@/lib/ai/replan";
-import { checkAndIncrement } from "@/lib/limits";
+import { EMPTY_REPLAN_DIFF } from "@/lib/ai/replan-diff";
+import { runMeteredAi, meteredErrorResponse } from "@/lib/ai/metered";
+import { NoLiveUserError, CAP_KIND_LABEL } from "@/lib/billing/usage";
 import { todayInTimeZone } from "@/lib/equipment-urgency";
 
 export const dynamic = "force-dynamic";
@@ -93,8 +93,6 @@ const ERR_GOAL_NOT_FOUND = "Goal not found.";
 const ERR_CHECK_IN_NOT_FOUND = "Check-in not found.";
 const ERR_SKIPPED_TRIGGER = "A skipped check-in cannot trigger a replan.";
 const ERR_DECIDED = "Replan proposal already decided.";
-const ERR_UNAVAILABLE = "AI service unavailable.";
-const ERR_FAILED = "Replan generation failed.";
 
 const bodySchema = z
   .object({
@@ -242,161 +240,199 @@ export async function POST(req: Request): Promise<Response> {
     };
   }
 
-  // Phase-2 quota stub — awaited BEFORE the model call so the endpoint shape
-  // is stable when Phase 3 fills in the real check (zero counter writes now).
-  await checkAndIncrement(userId, "replan");
+  // The decided-proposal 409 above rejected with ZERO quota. From here the
+  // metered wrapper owns meter → generate → persist → refund (S1). The persist
+  // is the existing lockScope transaction; its {kind:"decided"} is a persist
+  // RESULT (mapped to 409), NOT an error — so it never refunds. onFailure
+  // deletes ONLY a still-untouched weekly-fill placeholder (below).
+  type PersistOutcome =
+    | { kind: "ok"; proposalId: string }
+    | { kind: "decided" };
 
-  // ---- Prompt inputs (all scopedDb; the goal is already proven owned) ------
-  const today = todayInTimeZone(self.timezone);
-  const windowStart = adherenceWindowStart(today);
-
-  const [intakeRows, taskRows, milestoneRows, equipmentRows, completionRows] =
-    await Promise.all([
-      sdb.selectFrom(intake_summaries, {
-        where: eq(intake_summaries.goal_id, goal.id),
-      }),
-      sdb.selectFrom(recurring_tasks, {
-        where: eq(recurring_tasks.goal_id, goal.id),
-      }),
-      sdb.selectFrom(milestones, { where: eq(milestones.goal_id, goal.id) }),
-      sdb.selectFrom(equipment, { where: eq(equipment.goal_id, goal.id) }),
-      sdb.selectFrom(task_completions, {
-        where: and(
-          eq(task_completions.goal_id, goal.id),
-          gte(task_completions.for_date, windowStart),
-          lte(task_completions.for_date, today),
-        ),
-      }),
-    ]);
-
-  const intake = intakeRows[0] ?? null;
-  const intensity = resolveIntensity({
-    override: goal.intensity_override,
-    intakeSummary: intake
-      ? { confirmed_intensity: intake.confirmed_intensity }
-      : null,
-    userPreference: self.intensity_preference,
-  });
-
-  const tasks = taskRows.map((t) => ({
-    id: t.id,
-    title: t.title,
-    cadence: t.cadence,
-    weekday: t.weekday,
-    estimated_duration_min: t.estimated_duration_min,
-    active: t.active,
-  }));
-
+  let result;
   try {
-    const diff = await generateReplan({
-      goal: {
-        title: goal.title,
-        description: goal.description,
-        target_date: goal.target_date,
-      },
-      intakeSummary: intake ? projectIntakeSummary(intake) : null,
-      recurringTasks: tasks,
-      milestones: milestoneRows.map((m) => ({
-        id: m.id,
-        title: m.title,
-        target_date: m.target_date,
-        position: m.position,
-        completed: m.completed_at !== null,
-      })),
-      equipment: equipmentRows.map((e) => ({
-        id: e.id,
-        title: e.title,
-        cost_usd: e.cost_usd,
-        milestone_id: e.milestone_id,
-        standalone_deadline: e.standalone_deadline,
-        purchased: e.purchased_at !== null,
-      })),
-      adherence: aggregateAdherence({
-        tasks,
-        completions: completionRows,
-        today,
-      }),
-      trigger,
-      intensity,
-      today,
-    });
+    result = await runMeteredAi<import("@/lib/ai/replan-diff").ReplanDiff, PersistOutcome>(
+      {
+        userId,
+        kind: "replan",
+        call: async (signal) => {
+          // Prompt inputs (all scopedDb; the goal is already proven owned).
+          const today = todayInTimeZone(self.timezone);
+          const windowStart = adherenceWindowStart(today);
 
-    // Persist ONLY after a valid diff exists (AC: a failed generation never
-    // corrupts the proposal — the pending row keeps its prior diff and the
-    // create path writes nothing), and ONLY inside one transaction serialized
-    // by the per-user "replan" advisory lock. Generation deliberately ran
-    // OUTSIDE the lock: it is a multi-second model call, and holding the lock
-    // across it would serialize the parallel multi-goal fan-out Slice 3
-    // builds on. The price is that the pre-generation reads are stale by
-    // model-latency, so the fill-vs-create target is re-resolved
-    // authoritatively HERE, under the lock.
-    type PersistOutcome =
-      | { kind: "ok"; proposalId: string }
-      | { kind: "decided" };
-    const outcome = await sdb.transaction(
-      async (tx): Promise<PersistOutcome> => {
-        await tx.lockScope("replan");
+          const [
+            intakeRows,
+            taskRows,
+            milestoneRows,
+            equipmentRows,
+            completionRows,
+          ] = await Promise.all([
+            sdb.selectFrom(intake_summaries, {
+              where: eq(intake_summaries.goal_id, goal.id),
+            }),
+            sdb.selectFrom(recurring_tasks, {
+              where: eq(recurring_tasks.goal_id, goal.id),
+            }),
+            sdb.selectFrom(milestones, {
+              where: eq(milestones.goal_id, goal.id),
+            }),
+            sdb.selectFrom(equipment, { where: eq(equipment.goal_id, goal.id) }),
+            sdb.selectFrom(task_completions, {
+              where: and(
+                eq(task_completions.goal_id, goal.id),
+                gte(task_completions.for_date, windowStart),
+                lte(task_completions.for_date, today),
+              ),
+            }),
+          ]);
 
-        if (checkInId !== null) {
-          // weekly_check_in: re-select the (goal, check-in) proposal under
-          // the lock — it may have been created or decided mid-generation.
-          const currentRows = await tx.selectFrom(replan_proposals, {
+          const intake = intakeRows[0] ?? null;
+          const intensity = resolveIntensity({
+            override: goal.intensity_override,
+            intakeSummary: intake
+              ? { confirmed_intensity: intake.confirmed_intensity }
+              : null,
+            userPreference: self.intensity_preference,
+          });
+
+          const tasks = taskRows.map((t) => ({
+            id: t.id,
+            title: t.title,
+            cadence: t.cadence,
+            weekday: t.weekday,
+            estimated_duration_min: t.estimated_duration_min,
+            active: t.active,
+          }));
+
+          return generateReplan(
+            {
+              goal: {
+                title: goal.title,
+                description: goal.description,
+                target_date: goal.target_date,
+              },
+              intakeSummary: intake ? projectIntakeSummary(intake) : null,
+              recurringTasks: tasks,
+              milestones: milestoneRows.map((m) => ({
+                id: m.id,
+                title: m.title,
+                target_date: m.target_date,
+                position: m.position,
+                completed: m.completed_at !== null,
+              })),
+              equipment: equipmentRows.map((e) => ({
+                id: e.id,
+                title: e.title,
+                cost_usd: e.cost_usd,
+                milestone_id: e.milestone_id,
+                standalone_deadline: e.standalone_deadline,
+                purchased: e.purchased_at !== null,
+              })),
+              adherence: aggregateAdherence({
+                tasks,
+                completions: completionRows,
+                today,
+              }),
+              trigger,
+              intensity,
+              today,
+            },
+            signal,
+          );
+        },
+        // Persist ONLY after a valid diff exists (a failed generation never
+        // corrupts the proposal), inside ONE transaction serialized by the
+        // per-user "replan" advisory lock. Generation ran OUTSIDE the lock
+        // (multi-second call; holding the lock would serialize the multi-goal
+        // fan-out), so fill-vs-create is re-resolved authoritatively HERE.
+        persist: async (diff) =>
+          sdb.transaction(async (tx): Promise<PersistOutcome> => {
+            await tx.lockScope("replan");
+
+            if (checkInId !== null) {
+              // weekly_check_in: re-select the (goal, check-in) proposal under
+              // the lock — it may have been created or decided mid-generation.
+              const currentRows = await tx.selectFrom(replan_proposals, {
+                where: and(
+                  eq(replan_proposals.goal_id, goal.id),
+                  eq(replan_proposals.weekly_check_in_id, checkInId),
+                ),
+              });
+              const current = currentRows[0];
+              if (current) {
+                if (current.status !== "pending") return { kind: "decided" };
+                // Belt-and-braces: the WHERE also pins status='pending', so a
+                // decision committed between the read and this statement
+                // updates ZERO rows instead of overwriting a decided row.
+                const updated = await tx.update(replan_proposals, {
+                  set: { proposed_changes: diff, updated_at: new Date() },
+                  where: and(
+                    eq(replan_proposals.id, current.id),
+                    eq(replan_proposals.status, "pending"),
+                  ),
+                });
+                if (updated.length === 0) return { kind: "decided" };
+                return { kind: "ok", proposalId: current.id };
+              }
+            }
+
+            // First proposal for this trigger (weekly with no row yet, or
+            // structural_edit which ALWAYS creates) — the held lock closes the
+            // duplicate-insert window.
+            const inserted = await tx.insert(replan_proposals, {
+              goal_id: goal.id,
+              user_id: userId,
+              trigger: body.trigger,
+              weekly_check_in_id: checkInId,
+              proposed_changes: diff,
+              status: "pending",
+            });
+            return { kind: "ok", proposalId: inserted[0]!.id };
+          }),
+        // Stranded-row cleanup: the weekly-fill placeholder ONLY (pre-created
+        // by the check-in action with EMPTY_REPLAN_DIFF). Guarded scoped
+        // DELETE — the jsonb equality guard means a concurrent request that
+        // already filled the row with a REAL diff survives; a structural_edit
+        // (checkInId null) creates nothing pre-persist, so this is a no-op.
+        onFailure: async () => {
+          if (checkInId === null) return;
+          await sdb.delete(replan_proposals, {
             where: and(
               eq(replan_proposals.goal_id, goal.id),
               eq(replan_proposals.weekly_check_in_id, checkInId),
+              eq(replan_proposals.status, "pending"),
+              sql`${replan_proposals.proposed_changes} = ${JSON.stringify(
+                EMPTY_REPLAN_DIFF,
+              )}::jsonb`,
             ),
           });
-          const current = currentRows[0];
-          if (current) {
-            if (current.status !== "pending") return { kind: "decided" };
-            // Belt-and-braces: the WHERE also pins status='pending', so a
-            // decision committed between the read above and this statement
-            // (READ COMMITTED sees it) updates ZERO rows instead of
-            // overwriting a decided row.
-            const updated = await tx.update(replan_proposals, {
-              set: { proposed_changes: diff, updated_at: new Date() },
-              where: and(
-                eq(replan_proposals.id, current.id),
-                eq(replan_proposals.status, "pending"),
-              ),
-            });
-            // Zero rows ⇔ no longer a pending row (decided, or deleted with
-            // its goal) — nothing was written; the decided contract answer
-            // (409, row untouched) covers both honestly.
-            if (updated.length === 0) return { kind: "decided" };
-            return { kind: "ok", proposalId: current.id };
-          }
-        }
-
-        // First proposal for this trigger (weekly with no row yet, or
-        // structural_edit which ALWAYS creates) — the held lock closes the
-        // duplicate-insert window: replan_proposals has no unique index on
-        // (goal_id, weekly_check_in_id), so concurrent first-time POSTs
-        // queue here instead of double-inserting.
-        const inserted = await tx.insert(replan_proposals, {
-          goal_id: goal.id,
-          user_id: userId,
-          trigger: body.trigger,
-          weekly_check_in_id: checkInId,
-          proposed_changes: diff,
-          status: "pending",
-        });
-        return { kind: "ok", proposalId: inserted[0]!.id };
+        },
       },
     );
-
-    if (outcome.kind === "decided") {
-      return new Response(ERR_DECIDED, { status: 409 });
-    }
-    return Response.json({ ok: true, proposal_id: outcome.proposalId });
   } catch (err) {
-    if (err instanceof ReplanUnavailableError) {
-      return new Response(ERR_UNAVAILABLE, { status: 503 });
+    // Soft-deleted self at meter time (raced the getSelf check above).
+    if (err instanceof NoLiveUserError) {
+      return new Response(ERR_UNAUTHORIZED, { status: 401 });
     }
-    // Keep the raw provider/validation error (which carries the raw model
-    // response for ReplanValidationError) on the server; the client only
-    // ever sees a constant message.
-    logAiError("replan", err);
-    return new Response(ERR_FAILED, { status: 502 });
+    throw err;
   }
+
+  if (!result.ok && result.capped) {
+    return Response.json(
+      {
+        error: "cap_hit",
+        cap: result.cap,
+        used: result.used,
+        kind: CAP_KIND_LABEL.replan,
+      },
+      { status: 402 },
+    );
+  }
+  if (!result.ok) {
+    return meteredErrorResponse(result.outcome, "replan");
+  }
+  if (result.value.kind === "decided") {
+    return new Response(ERR_DECIDED, { status: 409 });
+  }
+  return Response.json({ ok: true, proposal_id: result.value.proposalId });
 }

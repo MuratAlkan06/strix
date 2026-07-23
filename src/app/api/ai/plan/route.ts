@@ -31,12 +31,10 @@ import { eq } from "drizzle-orm";
 import { scopedDb } from "@/db/scoped";
 import { goal_drafts } from "@/db/schema";
 import { DRAFT_COOKIE_NAME } from "@/lib/ai/session";
-import {
-  generatePlan,
-  PlanUnavailableError,
-} from "@/lib/ai/plan";
+import { generatePlan } from "@/lib/ai/plan";
+import { runMeteredAi, meteredErrorResponse } from "@/lib/ai/metered";
+import { NoLiveUserError, CAP_KIND_LABEL } from "@/lib/billing/usage";
 import { INTENSITY_LEVELS } from "@/lib/ai/intake-schema";
-import { logAiError } from "@/lib/ai/log";
 import { capture } from "@/lib/analytics/server";
 
 export const dynamic = "force-dynamic";
@@ -115,6 +113,9 @@ export async function POST(req: Request): Promise<Response> {
   if (!hasConfirmedIntake(draft.intake_summary_draft)) {
     return new Response("Intake is not complete.", { status: 409 });
   }
+  // Capture the narrowed summary now: the guard's narrowing is lost inside the
+  // wrapper's deferred `call` closure, so pin it to a typed local here.
+  const intakeSummary = draft.intake_summary_draft;
 
   if (inFlight.has(draft.id)) {
     return new Response("Plan generation is already running.", {
@@ -123,29 +124,49 @@ export async function POST(req: Request): Promise<Response> {
   }
   inFlight.add(draft.id);
 
+  // From here the metered wrapper owns meter → model → persist → refund. The
+  // early guards above all rejected with ZERO quota consumption; only a live,
+  // intake-complete draft reaches the meter. onFailure=none — a failed plan
+  // draft persists nothing (no pre-created row to strand).
   try {
-    const plan = await generatePlan({
-      intakeSummary: draft.intake_summary_draft,
+    const result = await runMeteredAi({
+      userId,
+      kind: "plan",
+      call: (signal) => generatePlan({ intakeSummary }, signal),
+      persist: async (plan) => {
+        // Overwrite-on-regenerate is intentional: plan_draft is draft-stage
+        // state ("nothing saves silently" — no goal rows exist until Save).
+        await sdb.update(goal_drafts, {
+          set: { plan_draft: plan },
+          where: eq(goal_drafts.id, draft.id),
+        });
+        await capture(userId, "plan_generated", { goal_draft_id: draft.id });
+        return plan;
+      },
     });
 
-    // Overwrite-on-regenerate is intentional: plan_draft is draft-stage state
-    // ("nothing saves silently" — no goal rows exist until Save in Slice 7).
-    await sdb.update(goal_drafts, {
-      set: { plan_draft: plan },
-      where: eq(goal_drafts.id, draft.id),
-    });
-
-    await capture(userId, "plan_generated", { goal_draft_id: draft.id });
-
-    return Response.json({ plan });
-  } catch (err) {
-    if (err instanceof PlanUnavailableError) {
-      return new Response("AI service unavailable.", { status: 503 });
+    if (!result.ok && result.capped) {
+      return Response.json(
+        {
+          error: "cap_hit",
+          cap: result.cap,
+          used: result.used,
+          kind: CAP_KIND_LABEL.plan,
+        },
+        { status: 402 },
+      );
     }
-    // Keep the raw provider/validation error (rate-limit notes, zod issues)
-    // on the server; the client only ever sees a constant message.
-    logAiError("plan", err);
-    return new Response("Plan generation failed.", { status: 502 });
+    if (!result.ok) {
+      return meteredErrorResponse(result.outcome, "plan");
+    }
+    return Response.json({ plan: result.value });
+  } catch (err) {
+    // The only throw the wrapper propagates is a soft-deleted self at meter
+    // time (raced the draft load); everything else is a returned outcome.
+    if (err instanceof NoLiveUserError) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    throw err;
   } finally {
     inFlight.delete(draft.id);
   }

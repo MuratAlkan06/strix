@@ -105,7 +105,7 @@
   - Decrement targets the **`periodStart` captured at increment time** (a failure straddling local midnight on the 1st must not decrement the new month's row).
   - Guarded `AND ${col} > 0` — there is no DB CHECK ≥ 0, and a negative counter would silently satisfy `used < limit` forever; make double-refund bugs loud, not generous.
   - The endpoints need an explicit **error-handling contract around the Anthropic call** (transport errors, timeouts, Zod-validation 502s — Phase 1's plan endpoint currently specifies none) so the refund has a hook for every failure class. Refund transport/availability failures unconditionally; for repeated Zod-validation failures, rate-limit the refund (model output is prompt-influenced — refund-on-every-failure converts the cap into "3 successes plus unlimited failed Anthropic spend").
-  - The failure path also marks the stranded `replan_proposals` row (created `pending` before generation) as failed/deleted rather than leaving it dangling.
+  - The failure path also cleans up the stranded `replan_proposals` row rather than leaving it dangling. **Parity note (S1, issue #96):** cleanup is a **guarded scoped DELETE of the weekly-fill placeholder only** — the row the check-in action pre-created with `EMPTY_REPLAN_DIFF`. The `onFailure` hook deletes it under `status='pending' AND proposed_changes = EMPTY_REPLAN_DIFF::jsonb` (race-safe: a concurrent request that already filled a real diff survives). There is **no `'failed'` enum value** (deletion is the sanctioned disposition); the `structural_edit` path creates nothing pre-persist, so its cleanup is a no-op.
   - Applies to **every** metered caller: `/api/ai/plan`, `/api/ai/replan` from check-ins, and replans with `trigger='structural_edit'` including archived-goal Restore.
 - **Retrofitted into Phase 1's `/api/ai/plan` and Phase 2's `/api/ai/replan` route handlers** as the first step inside the handler (before the Anthropic call). Phase 3 deliverable: edit both endpoints, replace the Phase 2 stub with the real call, add the failure-path refund, and add the 402-style response shape: `{ error: "cap_hit", cap: 3, used: 3, kind: "plan_generations" }`.
 - Inngest cron `resetMonthlyUsageCounters` (registered in Phase 2 as a no-op): body now finds users whose local-month just started in the last hour and creates the new `usage_counters` row (idempotent via the `(user_id, period_start)` unique constraint).
@@ -124,6 +124,7 @@
 - Free: 3 active goals max. Pro / Max: 5.
 - "Add new goal" tile on the goals list is hidden when `active_count >= tier_cap`.
 - **Hard-block in the goal save endpoint** (`POST /api/goals`): returns a 402-style cap error if the user tries to bypass. (Phase 1 already validates 5; Phase 3 tightens to per-tier and returns the cap-hit payload.)
+  - **Parity note (S1, issue #96):** goal save is the **`saveGoal` Server Action** (`src/app/(goals)/goals/new/review/save-goal.ts`), not a `POST /api/goals` route handler, per the house architecture. The per-tier cap (`tierGoalCap`: Free 3, Pro/Max 5) is re-checked inside the save transaction against the actor's own tier and returns the **structured cap result** (`{ ok: false, error: "cap_hit", cap, used, kind: "active_goals" }`) that the review client's cap-hit modal reads; it also fires the `free_tier_cap_hit { cap: "active_goals" }` capture server-side.
 - PostHog: `free_tier_cap_hit { cap: "active_goals" }`.
 
 ### Downgrade-and-archive selection screen
@@ -506,10 +507,24 @@ Under-specified items in the plan above; resolve each in its slice's design step
 - **Anthropic-call error-handling contract** (blocks **S1** refund logic) —
   Phase 1's plan endpoint specifies **none**. Define the failure classes
   (transport, timeout, Zod-validation 502) so `refundUsage` has a hook per
-  class.
+  class. **RESOLVED (S1 frozen contract, issue #96):** the shared wrapper
+  `runMeteredAi` (`src/lib/ai/metered.ts`) classifies every failure into the
+  **C1–C9 taxonomy** (not_configured 503, timeout 504, transport 503,
+  upstream_rate_limited 503, upstream_unavailable 503, request_rejected 500,
+  output_invalid 502, persist_failed 500, internal 500) and refunds per class.
+  Per-request budget is pinned: `AI_REQUEST_OPTIONS = { timeout: 60_000,
+  maxRetries: 1 }` (exported from `src/lib/ai/client.ts`) plus an outer
+  `AbortSignal.timeout(80_000)` threaded from the wrapper — provably inside
+  `maxDuration=90`.
 - **Zod-failure refund rate-limit threshold** (**S1**) — "rate-limit the refund
   for repeated Zod failures" is **untestable as written**; pin a concrete
-  threshold + window.
+  threshold + window. **RESOLVED (S1 frozen contract, issue #96):**
+  `VALIDATION_REFUND_LIMIT = 3` granted Zod-validation refunds per usage period
+  (calendar month, user TZ), per user, **shared across both metered kinds**;
+  the window is the period itself (resets with the row default). Storage is the
+  additive column `usage_counters.validation_refunds_used` (counts granted
+  refunds only); enforcement is one atomic UPDATE guarded on
+  `validation_refunds_used < 3`.
 - **Max→Pro mechanics** (**S6**) — in-place `subscription.update` (swap price,
   end trial → `updated` event, no ordering race) **vs** cancel+create
   (`superseded_at`). Decide in the S6 design; **evaluate against the Stripe test

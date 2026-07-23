@@ -32,7 +32,7 @@
  *     read-only summary. Stale diffs (a target row vanished) disable Apply
  *     honestly and offer regeneration.
  */
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, CircleAlert, Pencil, X } from "lucide-react";
@@ -40,6 +40,7 @@ import { Check, CircleAlert, Pencil, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GoalChip } from "@/components/goal-chip";
+import { UpgradeModal } from "@/components/upgrade-modal";
 import { cn } from "@/lib/utils";
 import { useFocusOnMount } from "@/lib/use-focus-on-mount";
 import { useRestoreFocus } from "@/lib/use-restore-focus";
@@ -110,6 +111,28 @@ export function ReplanDiffView({
   onGenerate,
   initialGenerateError,
 }: ReplanDiffViewProps) {
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+
+  // Only the generate/review modes carry a generate target.
+  const generateTarget =
+    model.mode === "generate" || model.mode === "review"
+      ? model.generate
+      : null;
+
+  // The real generate path (no playground override): POST /api/ai/replan and,
+  // on a 402 cap_hit, open the upgrade modal instead of the generic error
+  // surface. The free_tier_cap_hit event already fired in the client helper.
+  const defaultGenerate = useCallback<GenerateReplanHandler>(async () => {
+    if (!generateTarget) {
+      return { ok: false, error: GENERATE_FALLBACK_ERROR };
+    }
+    const result = await requestReplanGeneration(generateTarget);
+    if (!result.ok && result.capHit) {
+      setUpgradeOpen(true);
+    }
+    return result;
+  }, [generateTarget]);
+
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4 sm:gap-7 sm:p-6">
       <header className="flex flex-col gap-1.5">
@@ -130,16 +153,7 @@ export function ReplanDiffView({
       {model.mode === "generate" && (
         <GenerateSurface
           canGenerate={model.generate !== null}
-          onGenerate={
-            onGenerate ??
-            (() =>
-              model.generate
-                ? requestReplanGeneration(model.generate)
-                : Promise.resolve({
-                    ok: false as const,
-                    error: GENERATE_FALLBACK_ERROR,
-                  }))
-          }
+          onGenerate={onGenerate ?? defaultGenerate}
           initialError={initialGenerateError}
         />
       )}
@@ -148,18 +162,15 @@ export function ReplanDiffView({
         <ReviewSurface
           model={model}
           onDecide={onDecide}
-          onGenerate={
-            onGenerate ??
-            (() =>
-              model.generate
-                ? requestReplanGeneration(model.generate)
-                : Promise.resolve({
-                    ok: false as const,
-                    error: GENERATE_FALLBACK_ERROR,
-                  }))
-          }
+          onGenerate={onGenerate ?? defaultGenerate}
         />
       )}
+
+      <UpgradeModal
+        open={upgradeOpen}
+        onOpenChange={setUpgradeOpen}
+        capKind="replans"
+      />
     </main>
   );
 }

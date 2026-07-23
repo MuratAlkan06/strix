@@ -26,7 +26,10 @@ export default async function GoalsPage() {
   }
 
   const sdb = scopedDb(userId);
-  const goalRows = await sdb.selectFrom(goals);
+  const [self, goalRows] = await Promise.all([
+    sdb.getSelf(),
+    sdb.selectFrom(goals),
+  ]);
 
   // Milestones are only needed for active goals (progress + next milestone).
   const activeIds = goalRows
@@ -39,5 +42,11 @@ export default async function GoalsPage() {
         })
       : [];
 
-  return <GoalsList model={buildGoalsListModel(goalRows, milestoneRows)} />;
+  // Tier gates the "Add new goal" tile (Free = 3, Pro/Max = 5). A missing self
+  // (soft-deleted mid-request) falls back to the strictest cap.
+  return (
+    <GoalsList
+      model={buildGoalsListModel(goalRows, milestoneRows, self?.tier ?? "free")}
+    />
+  );
 }

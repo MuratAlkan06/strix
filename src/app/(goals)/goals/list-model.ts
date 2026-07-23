@@ -8,16 +8,18 @@
  *     goal-progress.ts — percent null for 0-milestone goals, so the view can
  *     render an honest no-milestones state, never a fake 0% bar) and the next
  *     milestone (earliest incomplete by position).
- *   - The "Add new goal" tile exists only while count(active) < ACTIVE_GOAL_CAP
- *     (5, hardcoded Phase 1) and previews the color a new goal WOULD get —
- *     the same pickColorIndex the save path runs (gap-filling min available).
- *     At cap there is no tile (Phase 3 adds upgrade messaging; nothing fake
- *     now).
+ *   - The "Add new goal" tile exists only while count(active) < the user's
+ *     TIER cap (Free = 3, Pro/Max = 5 — SPEC §10, via tierGoalCap) and
+ *     previews the color a new goal WOULD get — the same pickColorIndex the
+ *     save path runs (gap-filling min available). At cap there is no tile (the
+ *     cap-hit modal carries the upgrade messaging; nothing fake here).
  *   - Goals sort by started_at ascending (oldest first) within each status
  *     section — stable, creation-ordered.
  */
 import { milestoneProgress, nextMilestone } from "@/lib/goal-progress";
-import { ACTIVE_GOAL_CAP, pickColorIndex } from "@/lib/goal-colors";
+import { tierGoalCap, pickColorIndex } from "@/lib/goal-colors";
+
+export type GoalTier = "free" | "pro" | "max";
 
 export interface GoalRowLike {
   id: string;
@@ -75,6 +77,7 @@ function byStartedAt(a: GoalRowLike, b: GoalRowLike): number {
 export function buildGoalsListModel(
   goals: readonly GoalRowLike[],
   milestones: readonly MilestoneRowLike[],
+  tier: GoalTier = "free",
 ): GoalsListModel {
   const byGoal = new Map<string, MilestoneRowLike[]>();
   for (const m of milestones) {
@@ -119,7 +122,7 @@ export function buildGoalsListModel(
     completed: inactive("completed"),
     archived: inactive("archived"),
     addTileColorIndex:
-      active.length < ACTIVE_GOAL_CAP
+      active.length < tierGoalCap(tier)
         ? pickColorIndex(active.map((g) => g.colorIndex))
         : null,
   };
