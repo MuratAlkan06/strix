@@ -42,7 +42,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
-    "inngest": "^3.27.5",
+    "inngest": "^4.13.0",
     "lucide-react": "^1.25.0",
     "motion": "^12.42.2",
     "next": "16.2.11",
