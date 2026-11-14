@@ -3,7 +3,44 @@
 [![ci](https://github.com/MuratAlkan06/strix/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/MuratAlkan06/strix/actions/workflows/ci.yml)
 [![License: FSL-1.1-MIT](https://img.shields.io/badge/license-FSL--1.1--MIT-blue)](./LICENSE.md)
 
-Goal-tracking app — see [SPEC.md](./SPEC.md) and [PLAN.md](./PLAN.md).
+Strix is a goal-tracking app for goals that take months of sustained work: climbing
+Mont Blanc, running a half marathon, writing a novel. You describe the goal in plain
+language, an AI interviews you about your starting point, your constraints, and your
+target date, and Strix turns the answers into a plan of daily habits, weekly sessions,
+dated milestones, and equipment with purchase deadlines. All of your active goals roll
+up into one dashboard that answers a single question: what do I do today?
+
+![The Strix dashboard showing today's tasks, this week, and upcoming milestones and equipment across three goals](e2e/playground-active-dashboard.spec.ts-snapshots/active-dashboard-desktop-chromium-linux.png)
+
+*The dashboard, rendered with sample data by the UI test harness. This file is the
+screenshot baseline that CI compares on every pull request.*
+
+Once a week a check-in asks how the plan felt, and the AI proposes adjustments as a diff
+that you accept, edit, or reject change by change. That rule holds everywhere: the AI
+proposes and the user approves, and no AI-generated change lands in a plan unreviewed.
+
+**Status.** `v0.5.0` covers the whole loop: intake, plan generation, the dashboard, the
+weekly check-in and replan, and an installable PWA with an offline shell. It runs on a
+preview deployment. Billing and the production launch are the phase in progress, so there
+is no production instance yet. [SPEC.md](./SPEC.md) defines the product and
+[PLAN.md](./PLAN.md) sequences the build.
+
+**Where to look in the code.**
+
+- **Per-user data isolation.** User-authenticated code reaches the database only through
+  `scopedDb(userId)`. The unscoped escape hatch is limited to an allowlist of paths, and
+  CI fails the build on anything outside it ([Access scoping](#access-scoping)).
+- **Model output is typed, then treated as untrusted.** The model client is created in
+  one place and all AI access goes through `src/lib/ai/`
+  ([ADR-0001](docs/adr/0001-ai-client-stack.md)). A replan arrives as a schema-validated
+  diff; every id in it must resolve to a row of the user's own goal or the whole commit
+  is refused, and only the changes the user accepted are written.
+- **The UI is gated in CI.** Playwright runs axe-core against the playground harness
+  states with zero WCAG 2.1 AA violations allowed, and compares screenshots against
+  committed baselines ([Phase verification](#phase-verification)).
+- **Docs are checked against code.** `pnpm ci:check-doc-parity` fails the build when this
+  README or PLAN.md drifts from the code on the invariants it tracks, such as enum lists
+  and the file tree below.
 
 ## Phase 0 setup
 
